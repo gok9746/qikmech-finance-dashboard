@@ -1,0 +1,76 @@
+Build me a full-stack web app called "QikMech Finance Dashboard" using Next.js (React) for frontend and Supabase as the backend. 
+
+### 1. Authentication & Roles
+- Use Supabase Auth for login (email + password).
+- Roles:
+  • Admin → Full access (jobs, expenses, profit, tax, reports).
+  • Staff → Can add/update jobs (status, amount, parts cost) but cannot see profit/tax/expenses.
+  • Accountant → Read-only access to summary & reports.
+
+### 2. Database (Supabase Tables)
+Create these tables:
+
+jobs:
+- id (uuid, primary key)
+- date (date)
+- customer (text)
+- service_type (text)
+- amount_eur (numeric, base price without tax)
+- parts_cost_eur (numeric)
+- status (enum: Pending, In Progress, Completed)
+- tax_applied (boolean, true if bill needed)
+- total_with_tax (numeric, calculated if tax_applied = true → amount_eur * 1.23)
+
+expenses:
+- id (uuid, primary key)
+- date (date)
+- category (text: Fuel, Tools, Insurance, Ads, etc.)
+- amount_eur (numeric)
+- notes (text)
+
+audit_log:
+- id (uuid, primary key)
+- user_email (text)
+- action (text)
+- timestamp (timestamptz default now())
+
+### 3. Features
+- Jobs Page (Admin + Staff):
+  • Form to add jobs.
+  • List of jobs with status filter (Pending, In Progress, Completed).
+  • Staff can only edit jobs, not see profit/tax.
+
+- Expenses Page (Admin only):
+  • Form to add expenses.
+  • Table listing expenses.
+
+- Summary Page (Admin + Accountant):
+  • Works completed (count).
+  • Income with tax = SUM(amount_eur + 23% where tax_applied = true).
+  • Income without tax = SUM(amount_eur where tax_applied = false).
+  • Total parts cost = SUM(parts_cost_eur).
+  • Other expenses = SUM(expenses.amount_eur).
+  • Total expenses = parts + other.
+  • Profit before tax = total income – total expenses.
+  • VAT collected = SUM(amount_eur*0.23 where tax_applied = true).
+  • Net profit = profit – VAT collected.
+  • Charts: 
+      - Monthly income vs expenses (line chart).
+      - Expense breakdown by category (pie chart).
+
+- Reports Page (Admin + Accountant):
+  • One-click button to generate PDF or Excel report with summary values.
+
+- Audit Log (Admin only):
+  • Table showing user actions (job added, expense updated, report generated).
+
+### 4. UI
+- Use TailwindCSS for a clean responsive design.
+- Navigation bar: Jobs | Expenses | Summary | Reports | Audit Log | Logout.
+- Mobile-friendly layout.
+- All amounts should display in euros (€).
+
+### 5. Hosting
+- App must run on Vercel without extra config.
+- Use Supabase URL and API key from environment variables.
+- Include README.md with setup instructions (Supabase setup, env vars, deployment).
