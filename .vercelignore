@@ -1,0 +1,9 @@
+# keep deploy clean – does NOT change behavior
+.local/
+.replit
+*.md
+**/node_modules/
+
+# do not upload backend to the static deploy
+server/
+server-dist/
