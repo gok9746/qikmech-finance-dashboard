@@ -1,9 +1,8 @@
 {
   "rewrites": [
-    // 1) If your frontend calls /api/... like on Replit, forward it to your existing backend
+  
     { "source": "/api/(.*)", "destination": "https://YOUR_BACKEND_HOST/api/$1" },
 
-    // 2) SPA fallback so deep links never 404
     { "source": "/(.*)", "destination": "/" }
   ]
 }
