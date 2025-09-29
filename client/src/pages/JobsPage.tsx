@@ -1,5 +1,4 @@
-// client/src/pages/JobsPage.tsx
-import { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -21,14 +20,16 @@ import { Checkbox } from "@/components/ui/checkbox";
 import JobCard from "@/components/jobs/JobCard";
 import { Search, Filter, Plus } from "lucide-react";
 
+type JobStatus = "Pending" | "In Progress" | "Completed";
+
 interface Job {
   id: string;
-  date: string;
+  date: string; // YYYY-MM-DD
   customer: string;
   service_type: string;
   amount_eur: number;
   parts_cost_eur: number;
-  status: "Pending" | "In Progress" | "Completed";
+  status: JobStatus;
   tax_applied: boolean;
 }
 
@@ -36,8 +37,10 @@ interface JobsPageProps {
   userRole: "admin" | "staff" | "accountant";
 }
 
+const STORAGE_KEY = "qm_jobs_v1";
+const VAT_RATE = 0.23;
+
 export default function JobsPage({ userRole }: JobsPageProps) {
-  // ✅ fresh start — no demo values
   const [jobs, setJobs] = useState<Job[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -46,12 +49,28 @@ export default function JobsPage({ userRole }: JobsPageProps) {
   const [open, setOpen] = useState(false);
   const [newCustomer, setNewCustomer] = useState("");
   const [newService, setNewService] = useState("");
-  const [newDate, setNewDate] = useState(
-    new Date().toISOString().slice(0, 10)
-  );
+  const [newDate, setNewDate] = useState(new Date().toISOString().slice(0, 10));
   const [newAmount, setNewAmount] = useState<number | "">("");
   const [newParts, setNewParts] = useState<number | "">("");
   const [newTax, setNewTax] = useState(false);
+
+  // Load from localStorage on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Job[];
+        if (Array.isArray(parsed)) setJobs(parsed);
+      }
+    } catch (_) {
+      // ignore parse errors
+    }
+  }, []);
+
+  // Persist on every change
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
+  }, [jobs]);
 
   const resetForm = () => {
     setNewCustomer("");
@@ -63,7 +82,6 @@ export default function JobsPage({ userRole }: JobsPageProps) {
   };
 
   const createJobLocal = () => {
-    // basic validation
     if (!newCustomer.trim() || !newService.trim() || !newDate) return;
 
     const job: Job = {
@@ -81,9 +99,13 @@ export default function JobsPage({ userRole }: JobsPageProps) {
     resetForm();
     setOpen(false);
 
-    // 🔄 When ready to save to Supabase, replace the two lines above with:
+    // 🔄 Later: replace with Supabase insert and keep setJobs for optimistic UI.
     // const { error } = await supabase.from("jobs").insert([job]);
-    // if (!error) { setJobs((p)=>[job,...p]); setOpen(false); resetForm(); }
+    // if (!error) setJobs((prev) => [job, ...prev]);
+  };
+
+  const handleStatusChange = (jobId: string, newStatus: JobStatus) => {
+    setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, status: newStatus } : j)));
   };
 
   const filteredJobs = jobs.filter((job) => {
@@ -95,31 +117,17 @@ export default function JobsPage({ userRole }: JobsPageProps) {
     return matchesSearch && matchesStatus;
   });
 
-  const handleStatusChange = (
-    jobId: string,
-    newStatus: "Pending" | "In Progress" | "Completed"
-  ) => {
-    setJobs((prev) =>
-      prev.map((job) => (job.id === jobId ? { ...job, status: newStatus } : job))
-    );
-    // console.log('Status changed:', { jobId, newStatus });
-  };
-
   return (
     <div className="p-6 space-y-6" data-testid="page-jobs">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Jobs</h1>
-          <p className="text-muted-foreground">
-            Manage customer service requests
-          </p>
+          <p className="text-muted-foreground">Manage customer service requests</p>
         </div>
 
         {(userRole === "admin" || userRole === "staff") && (
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              {/* type="button" so clicks aren't swallowed by forms */}
               <Button type="button" data-testid="button-add-job">
                 <Plus className="h-4 w-4 mr-2" />
                 Add Job
@@ -246,12 +254,8 @@ export default function JobsPage({ userRole }: JobsPageProps) {
 
       {/* Grid */}
       {filteredJobs.length === 0 ? (
-        <div
-          className="rounded-xl border border-dashed p-10 text-center text-muted-foreground"
-          data-testid="no-jobs-message"
-        >
-          No jobs yet. Click <span className="font-medium">Add Job</span> to
-          create your first one.
+        <div className="rounded-xl border border-dashed p-10 text-center text-muted-foreground">
+          No jobs yet. Click <span className="font-medium">Add Job</span> to create your first one.
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -261,10 +265,7 @@ export default function JobsPage({ userRole }: JobsPageProps) {
               job={job}
               userRole={userRole}
               onStatusChange={handleStatusChange}
-              onEdit={() => {
-                // placeholder for future edit modal
-                // console.log('Edit job:', job.id)
-              }}
+              onEdit={() => {}}
             />
           ))}
         </div>
