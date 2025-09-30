@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { queryClient } from "./lib/queryClient";
-import { supabase } from "@/lib/supabaseClient";
-
+import { queryClient } from "@/lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+
 import LoginForm from "@/components/auth/LoginForm";
 import JobsPage from "@/pages/JobsPage";
 import SummaryPage from "@/pages/SummaryPage";
@@ -24,22 +23,21 @@ import {
   FileSpreadsheet,
 } from "lucide-react";
 
-type Role = "admin" | "staff" | "accountant";
+import supabase from "@/lib/supabaseClient";
 
 interface User {
   email: string;
-  role: Role;
+  role: "admin" | "staff" | "accountant";
 }
 
-const ALLOWED_EMAILS = new Set<string>([
-  "pominpoppip@gmail.com",      // admin
-  "sooryamohan0001@gmail.com",  // accountant
-  "gokulsaj2016@gmail.com",     // staff
-]);
+const ALLOWLIST: Record<string, User["role"]> = {
+  "pominpoppi@gmail.com": "admin",
+  "sooryamohan0001@gmail.com": "accountant",
+  "gokulsaji2016@gmail.com": "staff",
+};
 
-const ALLOWED_ROLES = new Set<Role>(["admin", "staff", "accountant"]);
+const EXPENSES_STORAGE_KEY = "qm_expenses_v1";
 
-// ===== Navigation (kept like your current design: Audit visible to admin only) =====
 function Navigation({
   user,
   onLogout,
@@ -51,17 +49,18 @@ function Navigation({
   currentPage: string;
   setCurrentPage: (page: string) => void;
 }) {
-  const items = useMemo(
-    () =>
-      [
-        { title: "Jobs", page: "jobs", icon: Briefcase, roles: ["admin", "staff"] },
-        { title: "Summary", page: "summary", icon: BarChart3, roles: ["admin", "accountant", "staff"] },
-        { title: "Reports", page: "reports", icon: FileText, roles: ["admin", "accountant"] },
-        { title: "Expenses", page: "expenses", icon: CreditCard, roles: ["admin"] },
-        { title: "Audit Log", page: "audit", icon: Shield, roles: ["admin"] },
-      ] as const,
-    []
-  );
+  const getMenuItems = () => {
+    const baseItems = [
+      { title: "Jobs", page: "jobs", icon: Briefcase, roles: ["admin", "staff"] },
+      { title: "Summary", page: "summary", icon: BarChart3, roles: ["admin", "accountant"] },
+      { title: "Reports", page: "reports", icon: FileText, roles: ["admin", "accountant"] },
+    ];
+    const adminItems = [
+      { title: "Expenses", page: "expenses", icon: CreditCard, roles: ["admin"] },
+      { title: "Audit Log", page: "audit", icon: Shield, roles: ["admin"] },
+    ];
+    return [...baseItems, ...adminItems].filter((item) => item.roles.includes(user.role));
+  };
 
   return (
     <div className="w-64 bg-sidebar border-r border-sidebar-border flex flex-col h-screen">
@@ -72,20 +71,18 @@ function Navigation({
 
       <div className="flex-1 p-4">
         <nav className="space-y-2">
-          {items
-            .filter((i) => (i.roles as readonly Role[]).includes(user.role))
-            .map((item) => (
-              <Button
-                key={item.title}
-                variant={currentPage === item.page ? "secondary" : "ghost"}
-                className="w-full justify-start"
-                onClick={() => setCurrentPage(item.page)}
-                data-testid={`nav-${item.title.toLowerCase()}`}
-              >
-                <item.icon className="h-4 w-4 mr-2" />
-                {item.title}
-              </Button>
-            ))}
+          {getMenuItems().map((item) => (
+            <Button
+              key={item.title}
+              variant={currentPage === item.page ? "secondary" : "ghost"}
+              className="w-full justify-start"
+              onClick={() => setCurrentPage(item.page)}
+              data-testid={`nav-${item.title.toLowerCase()}`}
+            >
+              <item.icon className="h-4 w-4 mr-2" />
+              {item.title}
+            </Button>
+          ))}
         </nav>
       </div>
 
@@ -108,17 +105,20 @@ function Navigation({
   );
 }
 
-// ===== Simple pages you already had =====
 function ReportsPage() {
-  const handleExportPDF = () => alert("PDF report would be generated here!");
-  const handleExportExcel = () => alert("Excel report would be generated here!");
-
+  const handleExportPDF = () => {
+    alert("PDF report would be generated here!");
+  };
+  const handleExportExcel = () => {
+    alert("Excel report would be generated here!");
+  };
   return (
     <div className="p-6 space-y-6" data-testid="page-reports">
       <div>
         <h1 className="text-3xl font-bold text-foreground">Reports</h1>
         <p className="text-muted-foreground">Generate financial reports and exports</p>
       </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card className="hover-elevate">
           <CardHeader>
@@ -157,129 +157,93 @@ function ReportsPage() {
 }
 
 function ExpensesPage() {
+  const handleExpenseSubmit = (expense: any) => {
+    try {
+      const newExpense = {
+        id: crypto.randomUUID(),
+        date: expense?.date ?? new Date().toISOString().slice(0, 10),
+        category: String(expense?.category ?? "Other"),
+        amount_eur: Number(expense?.amount_eur ?? 0),
+        note: expense?.note ? String(expense.note) : null,
+      };
+      const existing = JSON.parse(localStorage.getItem(EXPENSES_STORAGE_KEY) || "[]");
+      const next = Array.isArray(existing) ? [newExpense, ...existing] : [newExpense];
+      localStorage.setItem(EXPENSES_STORAGE_KEY, JSON.stringify(next));
+      alert(`Added expense: €${newExpense.amount_eur.toFixed(2)} for ${newExpense.category}`);
+    } catch (err) {
+      console.error("Failed to save expense", err);
+      alert("Failed to save expense. Please try again.");
+    }
+  };
+
   return (
     <div className="p-6 space-y-6" data-testid="page-expenses">
       <div>
         <h1 className="text-3xl font-bold text-foreground">Expenses</h1>
         <p className="text-muted-foreground">Track and manage business expenses</p>
       </div>
-      <ExpenseForm onSubmit={() => { /* your existing handler or Supabase insert */ }} />
+      <ExpenseForm onSubmit={handleExpenseSubmit} />
+      <p className="text-xs text-muted-foreground">
+        Tip: after adding an expense, open <span className="font-medium">Summary</span> to see the totals update.
+      </p>
     </div>
   );
 }
 
-function AccessDenied({ onBack }: { onBack: () => void }) {
-  return (
-    <div className="min-h-screen grid place-items-center bg-background">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle className="text-center">Access denied</CardTitle>
-          <CardDescription className="text-center">
-            This account is not allowed to access the dashboard.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex justify-center">
-          <Button onClick={onBack}>Back to login</Button>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-// ===== MAIN APP with Supabase Auth + allowlist gate =====
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [currentPage, setCurrentPage] = useState("jobs");
-  const [accessDenied, setAccessDenied] = useState(false);
-  const [checkingSession, setCheckingSession] = useState(true);
 
-  // Fetch role + active from profiles and enforce allowlist
-  const enforceAllowlist = async (uid: string, fallbackEmail: string | null) => {
-    const { data: prof, error } = await supabase
-      .from("profiles")
-      .select("email, role, active")
-      .eq("id", uid)
-      .single();
-
-    if (error) {
-      console.error("profiles read error:", error);
-      return { allowed: false as const, email: fallbackEmail ?? "unknown", role: "staff" as Role };
-    }
-
-    const email = (prof?.email ?? fallbackEmail ?? "").toLowerCase();
-    const role = (prof?.role ?? "staff") as Role;
-    const active = Boolean(prof?.active);
-
-    const allowed =
-      !!email &&
-      ALLOWED_EMAILS.has(email) &&
-      active &&
-      ALLOWED_ROLES.has(role);
-
-    return { allowed: allowed as const, email, role };
-  };
-
-  // On refresh: restore session & gate
-  useEffect(() => {
-    (async () => {
-      const { data } = await supabase.auth.getSession();
-      const s = data.session;
-      if (!s?.user) {
-        setCheckingSession(false);
-        return;
-      }
-      const res = await enforceAllowlist(s.user.id, s.user.email ?? null);
-      if (!res.allowed) {
-        setAccessDenied(true);
-        await supabase.auth.signOut();
-        setUser(null);
-        setCheckingSession(false);
-        return;
-      }
-      setUser({ email: res.email, role: res.role });
-      setCurrentPage(res.role === "staff" ? "jobs" : "summary");
-      setCheckingSession(false);
-    })();
-
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (!session?.user) {
-        setUser(null);
-        return;
-      }
-      const res = await enforceAllowlist(session.user.id, session.user.email ?? null);
-      if (!res.allowed) {
-        setAccessDenied(true);
-        await supabase.auth.signOut();
-        setUser(null);
-        return;
-      }
-      setAccessDenied(false);
-      setUser({ email: res.email, role: res.role });
-      setCurrentPage(res.role === "staff" ? "jobs" : "summary");
-    });
-
-    return () => {
-      sub.subscription.unsubscribe();
-    };
-  }, []);
-
-  // Login with Supabase email/password
   const handleLogin = async (email: string, password: string) => {
-    setAccessDenied(false);
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error || !data.user) {
-      alert("Invalid email or password");
+    const e = email.trim().toLowerCase();
+
+    // Frontend allowlist
+    const allowRole = ALLOWLIST[e];
+    if (!allowRole) {
+      console.warn("Access denied on login", { email: e, reason: "email-not-allowed" });
+      alert("Access denied: this email is not allowed.");
       return;
     }
-    const res = await enforceAllowlist(data.user.id, data.user.email ?? null);
-    if (!res.allowed) {
-      setAccessDenied(true);
-      await supabase.auth.signOut();
-      alert("Access denied for this account.");
+
+    // Supabase auth
+    const { error } = await supabase.auth.signInWithPassword({ email: e, password });
+    if (error) {
+      console.error("Supabase sign-in failed", error);
+      alert("Sign-in failed. Check your email/password.");
       return;
     }
-    setUser({ email: res.email, role: res.role });
-    setCurrentPage(res.role === "staff" ? "jobs" : "summary");
+
+    // Optional: load profile role/active. If not found, fall back to allowlist role.
+    let finalRole: User["role"] = allowRole;
+    try {
+      const { data: profile, error: pErr } = await supabase
+        .from("profiles")
+        .select("role, active")
+        .eq("email", e)
+        .maybeSingle();
+
+      if (pErr) console.warn("Profile load error (continuing with allowlist role):", pErr.message);
+      if (profile) {
+        if (profile.active === false) {
+          alert("Your account is inactive. Contact admin.");
+          await supabase.auth.signOut();
+          return;
+        }
+        if (profile.role === "admin" || profile.role === "staff" || profile.role === "accountant") {
+          finalRole = profile.role;
+        }
+      }
+    } catch (err) {
+      console.warn("Profile lookup failed, using allowlist role");
+    }
+
+    const nextUser: User = { email: e, role: finalRole };
+    setUser(nextUser);
+
+    // landing page by role
+    if (finalRole === "staff") setCurrentPage("jobs");
+    else if (finalRole === "accountant") setCurrentPage("summary");
+    else setCurrentPage("summary");
   };
 
   const handleLogout = async () => {
@@ -315,14 +279,8 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        {checkingSession ? (
-          <div className="min-h-screen grid place-items-center text-muted-foreground">Loading…</div>
-        ) : !user ? (
-          accessDenied ? (
-            <AccessDenied onBack={() => setAccessDenied(false)} />
-          ) : (
-            <LoginForm onLogin={handleLogin} />
-          )
+        {!user ? (
+          <LoginForm onLogin={handleLogin} />
         ) : (
           <div className="flex h-screen bg-background" data-testid="app-dashboard">
             <Navigation user={user} onLogout={handleLogout} currentPage={currentPage} setCurrentPage={setCurrentPage} />
