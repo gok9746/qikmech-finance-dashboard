@@ -1,129 +1,96 @@
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus } from 'lucide-react';
+import React from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
-interface ExpenseFormProps {
-  onSubmit: (expense: {
-    date: string;
-    category: string;
-    amount_eur: number;
-    notes: string;
-  }) => void;
-}
+export type Expense = {
+  id: string;
+  date: string;        // YYYY-MM-DD
+  category: string;    // Fuel, Tools, Insurance, Rent, Ads, Other, ...
+  amount_eur: number;
+  note?: string | null;
+};
 
-const EXPENSE_CATEGORIES = ['Fuel', 'Tools', 'Insurance', 'Ads', 'Office Supplies', 'Utilities', 'Other'];
+type ExpenseFormProps = {
+  defaultValues?: Partial<Pick<Expense, "date" | "category" | "amount_eur" | "note">>;
+  onSubmit: (payload: { date: string; category: string; amount_eur: number; notes?: string }) => void;
+  onCancel?: () => void;
+};
 
-export default function ExpenseForm({ onSubmit }: ExpenseFormProps) {
-  const [formData, setFormData] = useState({
-    date: new Date().toISOString().split('T')[0],
-    category: '',
-    amount_eur: '',
-    notes: ''
-  });
-  const [isSubmitting, setIsSubmitting] = useState(false);
+export default function ExpenseForm({ defaultValues, onSubmit, onCancel }: ExpenseFormProps) {
+  const [date, setDate] = React.useState(
+    defaultValues?.date ?? new Date().toISOString().slice(0, 10)
+  );
+  const [category, setCategory] = React.useState(defaultValues?.category ?? "");
+  const [amount, setAmount] = React.useState<string>(
+    defaultValues?.amount_eur != null ? String(defaultValues.amount_eur) : ""
+  );
+  const [notes, setNotes] = React.useState(defaultValues?.note ?? "");
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!formData.category || !formData.amount_eur) return;
-    
-    setIsSubmitting(true);
-    
-    // TODO: remove mock functionality
-    setTimeout(() => {
-      onSubmit({
-        ...formData,
-        amount_eur: parseFloat(formData.amount_eur)
-      });
-      console.log('Expense submitted', formData);
-      
-      // Reset form
-      setFormData({
-        date: new Date().toISOString().split('T')[0],
-        category: '',
-        amount_eur: '',
-        notes: ''
-      });
-      setIsSubmitting(false);
-    }, 500);
-  };
+
+    const amt = Number(amount);
+    if (!date) return alert("Please choose a date.");
+    if (!category.trim()) return alert("Please enter a category.");
+    if (Number.isNaN(amt) || amt < 0) return alert("Please enter a valid amount.");
+
+    onSubmit({
+      date,
+      category: category.trim(),
+      amount_eur: amt,
+      notes: notes?.toString() ?? "",
+    });
+  }
 
   return (
-    <Card className="hover-elevate" data-testid="form-expense">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Plus className="h-5 w-5" />
-          Add New Expense
-        </CardTitle>
-        <CardDescription>Record a business expense for tracking</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="date">Date</Label>
-              <Input
-                id="date"
-                type="date"
-                value={formData.date}
-                onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
-                data-testid="input-expense-date"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="category">Category</Label>
-              <Select value={formData.category} onValueChange={(value) => setFormData(prev => ({ ...prev, category: value }))}>
-                <SelectTrigger data-testid="select-expense-category">
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {EXPENSE_CATEGORIES.map(category => (
-                    <SelectItem key={category} value={category}>
-                      {category}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="amount">Amount (€)</Label>
-            <Input
-              id="amount"
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder="0.00"
-              value={formData.amount_eur}
-              onChange={(e) => setFormData(prev => ({ ...prev, amount_eur: e.target.value }))}
-              data-testid="input-expense-amount"
-              required
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="notes">Notes (optional)</Label>
-            <Textarea
-              id="notes"
-              placeholder="Additional details about this expense..."
-              value={formData.notes}
-              onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-              data-testid="input-expense-notes"
-              rows={3}
-            />
-          </div>
-          
-          <Button type="submit" disabled={isSubmitting} className="w-full" data-testid="button-submit-expense">
-            {isSubmitting ? 'Adding Expense...' : 'Add Expense'}
+    <form className="space-y-4" onSubmit={handleSubmit}>
+      <div className="grid gap-2">
+        <Label htmlFor="exp-date">Date</Label>
+        <Input id="exp-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+      </div>
+
+      <div className="grid gap-2">
+        <Label htmlFor="exp-category">Category</Label>
+        <Input
+          id="exp-category"
+          placeholder="Fuel / Tools / Insurance / Rent / Ads / Other"
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+        />
+      </div>
+
+      <div className="grid gap-2">
+        <Label htmlFor="exp-amount">Amount (€)</Label>
+        <Input
+          id="exp-amount"
+          type="number"
+          step="0.01"
+          inputMode="decimal"
+          placeholder="0.00"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+        />
+      </div>
+
+      <div className="grid gap-2">
+        <Label htmlFor="exp-notes">Notes (optional)</Label>
+        <Input
+          id="exp-notes"
+          placeholder="Short note"
+          value={notes ?? ""}
+          onChange={(e) => setNotes(e.target.value)}
+        />
+      </div>
+
+      <div className="flex items-center justify-end gap-2 pt-2">
+        {onCancel && (
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Cancel
           </Button>
-        </form>
-      </CardContent>
-    </Card>
+        )}
+        <Button type="submit">Save Expense</Button>
+      </div>
+    </form>
   );
 }
