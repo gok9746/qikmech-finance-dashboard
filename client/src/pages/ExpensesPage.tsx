@@ -44,9 +44,11 @@ export default function ExpensesPage({ userRole }: ExpensesPageProps) {
     // Fire a SAME-TAB custom event so SummaryPage can refresh immediately
     window.dispatchEvent(new CustomEvent("qm:data-updated", { detail: { table: "expenses" } }));
 
-    // (Optional) also fire a vanilla storage event for cross-tab (some browsers ignore synthetic)
+    // (Optional) also fire a vanilla storage event for cross-tab
     try {
-      window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEY, newValue: JSON.stringify(next) }));
+      window.dispatchEvent(
+        new StorageEvent("storage", { key: STORAGE_KEY, newValue: JSON.stringify(next) })
+      );
     } catch {
       // Safari/others may block constructing StorageEvent; custom event above is what we rely on
     }
@@ -57,7 +59,7 @@ export default function ExpensesPage({ userRole }: ExpensesPageProps) {
       id: crypto.randomUUID(),
       date: payload.date,
       category: payload.category.trim(),
-      amount_eur: Number(payload.amount_eur || 0),
+      amount_eur: payload.amount_eur, // ✅ now guaranteed number
       note: payload.notes?.trim() ? payload.notes.trim() : null,
     };
     const updated = [e, ...expenses];
@@ -108,7 +110,6 @@ export default function ExpensesPage({ userRole }: ExpensesPageProps) {
         </div>
       </div>
 
-      {/* Simple list (keep your existing table if you have one) */}
       <div className="rounded-2xl border p-4">
         {filtered.length === 0 ? (
           <p className="text-sm opacity-70">No expenses yet.</p>
