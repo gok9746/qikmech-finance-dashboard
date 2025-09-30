@@ -29,6 +29,7 @@ export default function ExpenseForm({ defaultValues, onSubmit, onCancel }: Expen
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    console.log("✅ ExpenseForm handleSubmit fired"); // debug log
 
     const amt = Number(amount);
     if (!date) return alert("Please choose a date.");
@@ -38,16 +39,26 @@ export default function ExpenseForm({ defaultValues, onSubmit, onCancel }: Expen
     onSubmit({
       date,
       category: category.trim(),
-      amount_eur: amt, // ✅ always number
+      amount_eur: amt,
       notes: notes?.toString() ?? "",
     });
+
+    // reset form after save
+    setCategory("");
+    setAmount("");
+    setNotes("");
   }
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
       <div className="grid gap-2">
         <Label htmlFor="exp-date">Date</Label>
-        <Input id="exp-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        <Input
+          id="exp-date"
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+        />
       </div>
 
       <div className="grid gap-2">
@@ -89,7 +100,12 @@ export default function ExpenseForm({ defaultValues, onSubmit, onCancel }: Expen
             Cancel
           </Button>
         )}
-        <Button type="submit">Save Expense</Button>
+        <Button
+          type="submit" // 👈 explicitly submit
+          onClick={() => console.log("🖱️ Save Expense button clicked")}
+        >
+          Save Expense
+        </Button>
       </div>
     </form>
   );
