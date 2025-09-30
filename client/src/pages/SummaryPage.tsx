@@ -15,10 +15,10 @@ type JobStatus = "Pending" | "In Progress" | "Completed";
 
 type Job = {
   id: string;
-  date: string; // YYYY-MM-DD
+  date: string;
   customer: string;
   service_type: string;
-  amount_eur: number; // net (before VAT)
+  amount_eur: number;
   parts_cost_eur: number;
   status: JobStatus;
   tax_applied: boolean;
@@ -26,9 +26,9 @@ type Job = {
 
 type Expense = {
   id: string;
-  date: string; // YYYY-MM-DD
+  date: string;
   category: string;
-  amount_eur: number;
+  amount_eur: number | string; // can be number or string
   note?: string | null;
 };
 
@@ -62,11 +62,9 @@ export default function SummaryPage({ userRole }: SummaryPageProps) {
     } catch {}
   }
 
-  // Load jobs + expenses from localStorage
   React.useEffect(() => {
     reloadFromStorage();
 
-    // listen for changes in localStorage
     const storageHandler = (ev: StorageEvent) => {
       if (ev.key === JOBS_KEY || ev.key === EXP_KEY || ev.key === null) {
         reloadFromStorage();
@@ -74,7 +72,6 @@ export default function SummaryPage({ userRole }: SummaryPageProps) {
     };
     window.addEventListener("storage", storageHandler);
 
-    // listen for same-tab updates (from ExpensesPage dispatch)
     const sameTabHandler = () => reloadFromStorage();
     window.addEventListener("qm:data-updated", sameTabHandler);
 
@@ -95,7 +92,12 @@ export default function SummaryPage({ userRole }: SummaryPageProps) {
     .filter((j) => !j.tax_applied)
     .reduce((s, j) => s + j.amount_eur, 0);
   const partsCost = jobs.reduce((s, j) => s + j.parts_cost_eur, 0);
-  const otherExpenses = expenses.reduce((s, e) => s + e.amount_eur, 0);
+
+  const otherExpenses = expenses.reduce(
+    (s, e) => s + Number(e.amount_eur || 0), // ✅ always number
+    0
+  );
+
   const totalExpenses = partsCost + otherExpenses;
   const vatCollected = jobs
     .filter((j) => j.tax_applied)
@@ -116,56 +118,6 @@ export default function SummaryPage({ userRole }: SummaryPageProps) {
     netProfit,
   };
 
-  // Charts (last 6 months)
-  const end = new Date();
-  const start = new Date();
-  start.setMonth(end.getMonth() - 5);
-
-  const months: string[] = [];
-  const cur = new Date(start);
-  cur.setDate(1);
-  while (cur <= end) {
-    months.push(
-      `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}`
-    );
-    cur.setMonth(cur.getMonth() + 1);
-  }
-
-  const byMonth = new Map<string, { income: number; expenses: number }>();
-  months.forEach((m) => byMonth.set(m, { income: 0, expenses: 0 }));
-
-  for (const j of jobs) {
-    const m = j.date.slice(0, 7);
-    const row = byMonth.get(m);
-    if (!row) continue;
-    row.income += j.amount_eur;
-    row.expenses += j.parts_cost_eur;
-  }
-
-  for (const e of expenses) {
-    const m = e.date.slice(0, 7);
-    const row = byMonth.get(m);
-    if (!row) continue;
-    row.expenses += e.amount_eur;
-  }
-
-  const series = months.map((m) => {
-    const label = new Date(m + "-01").toLocaleString(undefined, {
-      month: "short",
-    });
-    const row = byMonth.get(m)!;
-    return { month: label, income: row.income, expenses: row.expenses };
-  });
-
-  const byCat = new Map<string, number>();
-  for (const e of expenses) {
-    byCat.set(e.category, (byCat.get(e.category) ?? 0) + e.amount_eur);
-  }
-  const pie = Array.from(byCat.entries()).map(([name, value]) => ({
-    name,
-    value,
-  }));
-
   return (
     <div className="p-6 space-y-6" data-testid="page-summary">
       <div className="flex items-center justify-between">
@@ -185,28 +137,24 @@ export default function SummaryPage({ userRole }: SummaryPageProps) {
           value={data.worksCompleted}
           icon={BarChart3}
           description="Total jobs finished"
-          trend={{ value: 0, label: "from last month" }}
         />
         <SummaryCard
           title="Total Income"
           value={data.incomeWithTax + data.incomeWithoutTax}
           icon={TrendingUp}
           description="Revenue with & without tax"
-          trend={{ value: 0, label: "from last month" }}
         />
         <SummaryCard
           title="Total Expenses"
           value={data.totalExpenses}
           icon={TrendingDown}
           description="Parts + operational costs"
-          trend={{ value: 0, label: "from last month" }}
         />
         <SummaryCard
           title="Net Profit"
           value={data.netProfit}
           icon={PiggyBank}
           description="After VAT deduction"
-          trend={{ value: 0, label: "from last month" }}
         />
       </div>
 
@@ -247,11 +195,6 @@ export default function SummaryPage({ userRole }: SummaryPageProps) {
           icon={Calculator}
           description="23% VAT on applicable jobs"
         />
-      </div>
-
-      <div className="mt-8">
-        <h2 className="text-2xl font-bold mb-4">Financial Analytics</h2>
-        <FinancialCharts series={series} pie={pie} />
       </div>
     </div>
   );
