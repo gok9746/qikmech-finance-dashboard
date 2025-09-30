@@ -1,112 +1,95 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export type Expense = {
   id: string;
-  date: string;        // YYYY-MM-DD
-  category: string;    // Fuel, Tools, Insurance, Rent, Ads, Other, ...
+  date: string;       // YYYY-MM-DD
+  category: string;   // Fuel, Tools, Insurance, etc.
   amount_eur: number;
   note?: string | null;
 };
 
-type ExpenseFormProps = {
-  defaultValues?: Partial<Pick<Expense, "date" | "category" | "amount_eur" | "note">>;
-  onSubmit: (payload: { date: string; category: string; amount_eur: number; notes?: string }) => void;
-  onCancel?: () => void;
-};
+const STORAGE_KEY = "qm_expenses_v1";
 
-export default function ExpenseForm({ defaultValues, onSubmit, onCancel }: ExpenseFormProps) {
-  const [date, setDate] = React.useState(
-    defaultValues?.date ?? new Date().toISOString().slice(0, 10)
-  );
-  const [category, setCategory] = React.useState(defaultValues?.category ?? "");
-  const [amount, setAmount] = React.useState<string>(
-    defaultValues?.amount_eur != null ? String(defaultValues.amount_eur) : ""
-  );
-  const [notes, setNotes] = React.useState(defaultValues?.note ?? "");
+export default function ExpensesPage() {
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [category, setCategory] = useState("");
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    console.log("✅ ExpenseForm handleSubmit fired"); // debug log
+  // Load from storage on first render
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) setExpenses(JSON.parse(raw));
+    } catch {}
+  }, []);
 
-    const amt = Number(amount);
-    if (!date) return alert("Please choose a date.");
-    if (!category.trim()) return alert("Please enter a category.");
-    if (Number.isNaN(amt) || amt < 0) return alert("Please enter a valid amount.");
+  function saveExpenses(next: Expense[]) {
+    setExpenses(next);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    window.dispatchEvent(new CustomEvent("qm:data-updated", { detail: { table: "expenses" } }));
+  }
 
-    onSubmit({
+  function addExpense() {
+    if (!category.trim() || !amount) return alert("Fill category and amount");
+
+    const e: Expense = {
+      id: crypto.randomUUID(),
       date,
       category: category.trim(),
-      amount_eur: amt,
-      notes: notes?.toString() ?? "",
-    });
+      amount_eur: Number(amount),
+      note: note.trim() || null,
+    };
 
-    // reset form after save
+    saveExpenses([e, ...expenses]);
+
+    // Reset form
     setCategory("");
     setAmount("");
-    setNotes("");
+    setNote("");
   }
 
   return (
-    <form className="space-y-4" onSubmit={handleSubmit}>
-      <div className="grid gap-2">
-        <Label htmlFor="exp-date">Date</Label>
-        <Input
-          id="exp-date"
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-        />
+    <div className="p-6 space-y-6">
+      <h1 className="text-2xl font-bold">Expenses</h1>
+
+      {/* Add Expense Form */}
+      <div className="grid gap-2 max-w-md">
+        <Label>Date</Label>
+        <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+
+        <Label>Category</Label>
+        <Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Fuel / Tools / Rent" />
+
+        <Label>Amount (€)</Label>
+        <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
+
+        <Label>Note</Label>
+        <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" />
+
+        <Button onClick={addExpense}>Save Expense</Button>
       </div>
 
-      <div className="grid gap-2">
-        <Label htmlFor="exp-category">Category</Label>
-        <Input
-          id="exp-category"
-          placeholder="Fuel / Tools / Insurance / Rent / Ads / Other"
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-        />
-      </div>
-
-      <div className="grid gap-2">
-        <Label htmlFor="exp-amount">Amount (€)</Label>
-        <Input
-          id="exp-amount"
-          type="number"
-          step="0.01"
-          inputMode="decimal"
-          placeholder="0.00"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-        />
-      </div>
-
-      <div className="grid gap-2">
-        <Label htmlFor="exp-notes">Notes (optional)</Label>
-        <Input
-          id="exp-notes"
-          placeholder="Short note"
-          value={notes ?? ""}
-          onChange={(e) => setNotes(e.target.value)}
-        />
-      </div>
-
-      <div className="flex items-center justify-end gap-2 pt-2">
-        {onCancel && (
-          <Button type="button" variant="outline" onClick={onCancel}>
-            Cancel
-          </Button>
+      {/* Expense List */}
+      <div className="space-y-2">
+        {expenses.length === 0 ? (
+          <p className="text-muted-foreground">No expenses yet.</p>
+        ) : (
+          expenses.map((e) => (
+            <div key={e.id} className="border rounded-lg p-3 flex justify-between">
+              <div>
+                <strong>{e.category}</strong> — {e.date}
+                <div className="text-sm opacity-70">{e.note || "-"}</div>
+              </div>
+              <div>€ {e.amount_eur.toFixed(2)}</div>
+            </div>
+          ))
         )}
-        <Button
-          type="submit" // 👈 explicitly submit
-          onClick={() => console.log("🖱️ Save Expense button clicked")}
-        >
-          Save Expense
-        </Button>
       </div>
-    </form>
+    </div>
   );
 }
