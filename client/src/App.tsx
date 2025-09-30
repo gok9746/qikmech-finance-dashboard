@@ -27,29 +27,29 @@ import {
 type Role = "admin" | "staff" | "accountant";
 interface User { email: string; role: Role; }
 
-// ---- Allowlist: only these three accounts may access the app
-const ALLOWED_EMAILS = new Set<string>([
-  "pominpoppip@gmail.com",      // admin
-  "sooryamohan0001@gmail.com",  // accountant
-  "gokulsaj2016@gmail.com",     // staff
-]);
+// ===== Strict allow-list: email -> role (ONLY these can use the app) =====
+const ALLOWLIST: Record<string, Role> = {
+  "pominpoppi@gmail.com": "admin",
+  "sooryamohan0001@gmail.com": "accountant",
+  "gokulsaji2016@gmail.com": "staff",
+};
 
-const ALLOWED_ROLES = new Set<Role>(["admin", "staff", "accountant"]); // UI behavior only
-const DEBUG_ALLOWLIST = true;
+const ALLOWED_ROLES = new Set<Role>(["admin", "staff", "accountant"]);
+const DEBUG = false;
 
-// ===== Navigation (kept like your current design) =====
+// ===== Navigation (unchanged layout) =====
 function Navigation({
   user, onLogout, currentPage, setCurrentPage,
 }: { user: User; onLogout: () => void; currentPage: string; setCurrentPage: (p: string) => void }) {
   const items = useMemo(
     () =>
       [
-        { title: "Jobs", page: "jobs", icon: Briefcase, roles: ["admin", "staff"] },
-        { title: "Summary", page: "summary", icon: BarChart3, roles: ["admin", "accountant", "staff"] },
-        { title: "Reports", page: "reports", icon: FileText, roles: ["admin", "accountant"] },
-        { title: "Expenses", page: "expenses", icon: CreditCard, roles: ["admin"] },
-        { title: "Audit Log", page: "audit", icon: Shield, roles: ["admin"] },
-      ] as const,
+        { title: "Jobs", page: "jobs", icon: Briefcase, roles: ["admin", "staff"] as const },
+        { title: "Summary", page: "summary", icon: BarChart3, roles: ["admin", "accountant", "staff"] as const },
+        { title: "Reports", page: "reports", icon: FileText, roles: ["admin", "accountant"] as const },
+        { title: "Expenses", page: "expenses", icon: CreditCard, roles: ["admin"] as const },
+        { title: "Audit Log", page: "audit", icon: Shield, roles: ["admin"] as const },
+      ],
     []
   );
 
@@ -61,7 +61,7 @@ function Navigation({
       </div>
       <div className="flex-1 p-4">
         <nav className="space-y-2">
-          {items.filter(i => (i.roles as readonly Role[]).includes(user.role)).map((item) => (
+          {items.filter(i => i.roles.includes(user.role)).map((item) => (
             <Button
               key={item.title}
               variant={currentPage === item.page ? "secondary" : "ghost"}
@@ -89,10 +89,7 @@ function Navigation({
   );
 }
 
-// ===== Simple Reports page you had =====
 function ReportsPage() {
-  const handleExportPDF = () => alert("PDF report would be generated here!");
-  const handleExportExcel = () => alert("Excel report would be generated here!");
   return (
     <div className="p-6 space-y-6" data-testid="page-reports">
       <div>
@@ -106,7 +103,7 @@ function ReportsPage() {
             <CardDescription>Generate a comprehensive PDF report</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button className="w-full" onClick={handleExportPDF} data-testid="button-export-pdf">
+            <Button className="w-full" onClick={() => alert("PDF report would be generated here!")} data-testid="button-export-pdf">
               <FileText className="h-4 w-4 mr-2" />
               Export PDF
             </Button>
@@ -118,7 +115,7 @@ function ReportsPage() {
             <CardDescription>Export financial data to Excel</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button className="w-full" onClick={handleExportExcel} data-testid="button-export-excel">
+            <Button className="w-full" onClick={() => alert("Excel report would be generated here!")} data-testid="button-export-excel">
               <FileSpreadsheet className="h-4 w-4 mr-2" />
               Export Excel
             </Button>
@@ -136,7 +133,7 @@ function ExpensesPage() {
         <h1 className="text-3xl font-bold text-foreground">Expenses</h1>
         <p className="text-muted-foreground">Track and manage business expenses</p>
       </div>
-      <ExpenseForm onSubmit={() => { /* your existing handler or Supabase insert */ }} />
+      <ExpenseForm onSubmit={() => { /* hook up to Supabase later */ }} />
     </div>
   );
 }
@@ -164,34 +161,40 @@ function App() {
   const [accessDenied, setAccessDenied] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
 
-  const normalizeEmail = (e: string | null | undefined) => (e ?? "").trim().toLowerCase();
+  const norm = (e?: string | null) => (e ?? "").trim().toLowerCase();
 
-  // Gate: allow if email in allowlist. Role/active refine UI/permissions but DB RLS still protects data.
-  const checkAllowlist = async (uid: string, fallbackEmail: string | null) => {
-    // Try to read the profile (role/active), but don't block if it fails.
+  async function checkAllow(uid: string, fallbackEmail: string | null) {
+    // Try to read profile for role/active; fall back to allowlist role if needed
     const { data: prof, error } = await supabase
       .from("profiles")
       .select("email, role, active")
       .eq("id", uid)
-      .single();
+      .maybeSingle();
 
-    const email = normalizeEmail(prof?.email ?? fallbackEmail);
-    const emailAllowed = ALLOWED_EMAILS.has(email);
+    const email = norm(prof?.email ?? fallbackEmail);
+    const allowRole = ALLOWLIST[email];
 
-    // If profile read errored, still allow based on email allowlist (we’ll default role to 'staff').
-    if (error) {
-      if (DEBUG_ALLOWLIST) console.warn("profiles read error (soft-allow by email):", error);
-      return { allowed: emailAllowed as const, email, role: ("staff" as Role), reason: emailAllowed ? "soft-allow-by-email" : "email-not-allowed" };
+    if (!allowRole) {
+      if (DEBUG) console.warn("Email not in allowlist:", email);
+      return { allowed: false as const, email, reason: "email-not-allowed" as const };
     }
 
-    // If profile exists, treat active=null as true (tolerant), and use role if valid.
-    const active = prof?.active === false ? false : true;
-    const role = (ALLOWED_ROLES.has((prof?.role as Role) ?? "staff") ? (prof?.role as Role) : "staff");
+    if (error) {
+      if (DEBUG) console.warn("Profile read error, soft-allow by allowlist role:", error);
+      // Soft-allow using allowlist role
+      return { allowed: true as const, email, role: allowRole, reason: "allowlist-fallback" as const };
+    }
 
-    const allowed = emailAllowed && active;
-    const reason = !emailAllowed ? "email-not-allowed" : (!active ? "inactive-profile" : "ok");
-    return { allowed: allowed as const, email, role, reason };
-  };
+    // Treat active=null as active=true to be tolerant
+    const active = prof?.active === false ? false : true;
+    if (!active) {
+      if (DEBUG) console.warn("Profile is inactive:", email);
+      return { allowed: false as const, email, reason: "inactive" as const };
+    }
+
+    const profileRole = (ALLOWED_ROLES.has((prof?.role as Role) ?? "staff") ? (prof?.role as Role) : allowRole);
+    return { allowed: true as const, email, role: profileRole, reason: "ok" as const };
+  }
 
   // Restore session on refresh
   useEffect(() => {
@@ -200,9 +203,8 @@ function App() {
       const s = data.session;
       if (!s?.user) { setCheckingSession(false); return; }
 
-      const res = await checkAllowlist(s.user.id, s.user.email ?? null);
+      const res = await checkAllow(s.user.id, s.user.email ?? null);
       if (!res.allowed) {
-        if (DEBUG_ALLOWLIST) console.warn("Access denied on restore:", res);
         setAccessDenied(true);
         await supabase.auth.signOut();
         setUser(null);
@@ -210,43 +212,42 @@ function App() {
         return;
       }
       setAccessDenied(false);
-      setUser({ email: res.email, role: res.role });
+      setUser({ email: res.email, role: res.role! });
       setCurrentPage(res.role === "staff" ? "jobs" : "summary");
       setCheckingSession(false);
     })();
 
     const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (!session?.user) { setUser(null); return; }
-      const res = await checkAllowlist(session.user.id, session.user.email ?? null);
+      const res = await checkAllow(session.user.id, session.user.email ?? null);
       if (!res.allowed) {
-        if (DEBUG_ALLOWLIST) console.warn("Access denied on state change:", res);
         setAccessDenied(true);
         await supabase.auth.signOut();
         setUser(null);
         return;
       }
       setAccessDenied(false);
-      setUser({ email: res.email, role: res.role });
+      setUser({ email: res.email, role: res.role! });
       setCurrentPage(res.role === "staff" ? "jobs" : "summary");
     });
     return () => { sub.subscription.unsubscribe(); };
   }, []);
 
-  // Login with Supabase email/password
+  // Email/password login
   const handleLogin = async (email: string, password: string) => {
     setAccessDenied(false);
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error || !data.user) { alert("Invalid email or password"); return; }
 
-    const res = await checkAllowlist(data.user.id, data.user.email ?? null);
+    const res = await checkAllow(data.user.id, data.user.email ?? null);
     if (!res.allowed) {
-      if (DEBUG_ALLOWLIST) console.warn("Access denied on login:", res);
-      setAccessDenied(true);
       await supabase.auth.signOut();
+      setAccessDenied(true);
       alert("Access denied for this account.");
       return;
     }
-    setUser({ email: res.email, role: res.role });
+
+    setUser({ email: res.email, role: res.role! });
     setCurrentPage(res.role === "staff" ? "jobs" : "summary");
   };
 
