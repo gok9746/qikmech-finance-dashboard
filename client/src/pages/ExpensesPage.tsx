@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -10,224 +10,142 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Plus, Search } from "lucide-react";
+import ExpenseForm, { Expense } from "@/components/expenses/ExpenseForm";
 
-type Expense = {
-  id: string;
-  date: string;        // YYYY-MM-DD
-  category: string;    // Fuel, Tools, Insurance, Rent, Ads, Other, ...
-  amount_eur: number;
-  note?: string | null;
-};
+type Role = "admin" | "staff" | "accountant";
 
 interface ExpensesPageProps {
-  userRole: "admin" | "staff" | "accountant";
+  userRole: Role;
 }
 
 const STORAGE_KEY = "qm_expenses_v1";
 
 export default function ExpensesPage({ userRole }: ExpensesPageProps) {
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [q, setQ] = useState("");
+  const [expenses, setExpenses] = React.useState<Expense[]>([]);
+  const [q, setQ] = React.useState("");
+  const [open, setOpen] = React.useState(false);
 
-  // Dialog state
-  const [open, setOpen] = useState(false);
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [category, setCategory] = useState("");
-  const [amount, setAmount] = useState<number | "">("");
-  const [note, setNote] = useState("");
-
-  // Load on mount
-  useEffect(() => {
+  React.useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw) as Expense[];
+        const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) setExpenses(parsed);
       }
-    } catch {}
+    } catch {
+      // ignore
+    }
   }, []);
 
-  // Persist on change
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));
-  }, [expenses]);
+  function saveExpenses(next: Expense[]) {
+    setExpenses(next);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
 
-  const reset = () => {
-    setDate(new Date().toISOString().slice(0, 10));
-    setCategory("");
-    setAmount("");
-    setNote("");
-  };
+    // Fire a SAME-TAB custom event so SummaryPage can refresh immediately
+    window.dispatchEvent(new CustomEvent("qm:data-updated", { detail: { table: "expenses" } }));
 
-  const addExpense = () => {
-    if (!category.trim() || !date) return;
+    // (Optional) also fire a vanilla storage event for cross-tab (some browsers ignore synthetic)
+    try {
+      window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEY, newValue: JSON.stringify(next) }));
+    } catch {
+      // Safari/others may block constructing StorageEvent; custom event above is what we rely on
+    }
+  }
+
+  function addExpense(payload: { date: string; category: string; amount_eur: number; notes?: string }) {
     const e: Expense = {
       id: crypto.randomUUID(),
-      date,
-      category: category.trim(),
-      amount_eur: Number(amount || 0),
-      note: note.trim() ? note.trim() : null,
+      date: payload.date,
+      category: payload.category.trim(),
+      amount_eur: Number(payload.amount_eur || 0),
+      note: payload.notes?.trim() ? payload.notes.trim() : null,
     };
-
     const updated = [e, ...expenses];
-    setExpenses(updated);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-
-    // ✅ Manually trigger a storage event so SummaryPage updates in same tab
-    window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEY }));
-
-    reset();
+    saveExpenses(updated);
     setOpen(false);
+  }
 
-    // 🔄 Later: replace with Supabase insert
-    // await supabase.from("expenses").insert([e]);
-  };
-
-  const filtered = expenses.filter((e) => {
-    const qq = q.toLowerCase();
-    return (
-      e.category.toLowerCase().includes(qq) ||
-      (e.note?.toLowerCase().includes(qq) ?? false)
+  const filtered = React.useMemo(() => {
+    if (!q.trim()) return expenses;
+    const s = q.toLowerCase();
+    return expenses.filter((e) =>
+      [e.date, e.category, String(e.amount_eur), e.note ?? ""].some((v) =>
+        String(v).toLowerCase().includes(s)
+      )
     );
-  });
-
-  const currency = (n: number) =>
-    `€${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
-
-  const total = filtered.reduce((s, e) => s + e.amount_eur, 0);
+  }, [q, expenses]);
 
   return (
-    <div className="p-6 space-y-6" data-testid="page-expenses">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Expenses</h1>
-          <p className="text-muted-foreground">
-            Track operational expenses (fuel, tools, insurance, etc.)
-          </p>
-        </div>
+    <div className="p-4 md:p-6 space-y-6">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold tracking-tight">Expenses</h1>
 
-        {(userRole === "admin" || userRole === "accountant") && (
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 opacity-60" />
+            <Input
+              className="pl-8 w-64"
+              placeholder="Search expenses..."
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </div>
+
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button type="button">
-                <Plus className="h-4 w-4 mr-2" />
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
                 Add Expense
               </Button>
             </DialogTrigger>
-
-            <DialogContent className="sm:max-w-lg">
+            <DialogContent className="max-w-lg">
               <DialogHeader>
                 <DialogTitle>Add Expense</DialogTitle>
               </DialogHeader>
-
-              <div className="grid gap-4">
-                <div className="grid gap-2">
-                  <Label>Date</Label>
-                  <Input
-                    type="date"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                  />
-                </div>
-
-                <div className="grid gap-2">
-                  <Label>Category</Label>
-                  <Input
-                    placeholder="Fuel / Tools / Insurance / Rent / Ads / Other"
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                  />
-                </div>
-
-                <div className="grid gap-2">
-                  <Label>Amount (EUR)</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={amount}
-                    onChange={(e) =>
-                      setAmount(e.target.value === "" ? "" : +e.target.value)
-                    }
-                  />
-                </div>
-
-                <div className="grid gap-2">
-                  <Label>Note (optional)</Label>
-                  <Input
-                    placeholder="short note"
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                  />
-                </div>
-
-                <div className="flex justify-end gap-2 pt-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => {
-                      reset();
-                      setOpen(false);
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="button" onClick={addExpense}>
-                    Save
-                  </Button>
-                </div>
-              </div>
+              <ExpenseForm onSubmit={addExpense} onCancel={() => setOpen(false)} />
             </DialogContent>
           </Dialog>
+        </div>
+      </div>
+
+      {/* Simple list (keep your existing table if you have one) */}
+      <div className="rounded-2xl border p-4">
+        {filtered.length === 0 ? (
+          <p className="text-sm opacity-70">No expenses yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {filtered.map((e) => (
+              <div
+                key={e.id}
+                className="grid grid-cols-2 md:grid-cols-4 gap-2 items-center p-3 rounded-xl border"
+              >
+                <div>
+                  <Label className="opacity-60 text-xs">Date</Label>
+                  <div>{e.date}</div>
+                </div>
+                <div>
+                  <Label className="opacity-60 text-xs">Category</Label>
+                  <div>{e.category}</div>
+                </div>
+                <div>
+                  <Label className="opacity-60 text-xs">Amount (€)</Label>
+                  <div>€ {e.amount_eur.toFixed(2)}</div>
+                </div>
+                <div className="col-span-2 md:col-span-1">
+                  <Label className="opacity-60 text-xs">Note</Label>
+                  <div className="truncate">{e.note ?? "-"}</div>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search category or note…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-        <div className="text-sm text-muted-foreground">
-          Total: <span className="font-medium">{currency(total)}</span>
-        </div>
-      </div>
-
-      {filtered.length === 0 ? (
-        <div className="rounded-xl border border-dashed p-10 text-center text-muted-foreground">
-          No expenses yet. Click{" "}
-          <span className="font-medium">Add Expense</span> to create your first
-          one.
-        </div>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50">
-              <tr>
-                <th className="text-left p-3">Date</th>
-                <th className="text-left p-3">Category</th>
-                <th className="text-right p-3">Amount</th>
-                <th className="text-left p-3">Note</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((e) => (
-                <tr key={e.id} className="border-t">
-                  <td className="p-3">
-                    {new Date(e.date).toLocaleDateString()}
-                  </td>
-                  <td className="p-3">{e.category}</td>
-                  <td className="p-3 text-right">{currency(e.amount_eur)}</td>
-                  <td className="p-3">{e.note}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {userRole !== "staff" && (
+        <p className="text-xs opacity-60">
+          Tip: Make sure you view Summary on the <span className="font-medium">same domain</span> as
+          here (localStorage is origin-scoped).
+        </p>
       )}
     </div>
   );
