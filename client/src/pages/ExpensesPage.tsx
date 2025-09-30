@@ -25,6 +25,7 @@ export default function ExpensesPage({ userRole }: ExpensesPageProps) {
   const [q, setQ] = React.useState("");
   const [open, setOpen] = React.useState(false);
 
+  // Load from storage on mount
   React.useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -32,36 +33,40 @@ export default function ExpensesPage({ userRole }: ExpensesPageProps) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) setExpenses(parsed);
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error("❌ Failed to load expenses from localStorage", err);
     }
   }, []);
 
   function saveExpenses(next: Expense[]) {
+    console.log("💾 Writing to localStorage:", STORAGE_KEY, next);
     setExpenses(next);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
 
-    // Fire a SAME-TAB custom event so SummaryPage can refresh immediately
-    window.dispatchEvent(new CustomEvent("qm:data-updated", { detail: { table: "expenses" } }));
-
-    // (Optional) also fire a vanilla storage event for cross-tab
-    try {
-      window.dispatchEvent(
-        new StorageEvent("storage", { key: STORAGE_KEY, newValue: JSON.stringify(next) })
-      );
-    } catch {
-      // Safari/others may block constructing StorageEvent; custom event above is what we rely on
-    }
+    // Fire SAME-TAB event
+    window.dispatchEvent(
+      new CustomEvent("qm:data-updated", { detail: { table: "expenses" } })
+    );
   }
 
-  function addExpense(payload: { date: string; category: string; amount_eur: number; notes?: string }) {
+  function addExpense(payload: {
+    date: string;
+    category: string;
+    amount_eur: number | string;
+    notes?: string;
+  }) {
+    console.log("🟢 addExpense called with payload:", payload);
+
     const e: Expense = {
       id: crypto.randomUUID(),
       date: payload.date,
       category: payload.category.trim(),
-      amount_eur: payload.amount_eur, // ✅ now guaranteed number
+      amount_eur: Number(payload.amount_eur || 0), // ✅ force number
       note: payload.notes?.trim() ? payload.notes.trim() : null,
     };
+
+    console.log("💾 New expense object:", e);
+
     const updated = [e, ...expenses];
     saveExpenses(updated);
     setOpen(false);
@@ -104,7 +109,10 @@ export default function ExpensesPage({ userRole }: ExpensesPageProps) {
               <DialogHeader>
                 <DialogTitle>Add Expense</DialogTitle>
               </DialogHeader>
-              <ExpenseForm onSubmit={addExpense} onCancel={() => setOpen(false)} />
+              <ExpenseForm
+                onSubmit={addExpense}
+                onCancel={() => setOpen(false)}
+              />
             </DialogContent>
           </Dialog>
         </div>
@@ -130,7 +138,7 @@ export default function ExpensesPage({ userRole }: ExpensesPageProps) {
                 </div>
                 <div>
                   <Label className="opacity-60 text-xs">Amount (€)</Label>
-                  <div>€ {e.amount_eur.toFixed(2)}</div>
+                  <div>€ {Number(e.amount_eur).toFixed(2)}</div>
                 </div>
                 <div className="col-span-2 md:col-span-1">
                   <Label className="opacity-60 text-xs">Note</Label>
@@ -141,13 +149,6 @@ export default function ExpensesPage({ userRole }: ExpensesPageProps) {
           </div>
         )}
       </div>
-
-      {userRole !== "staff" && (
-        <p className="text-xs opacity-60">
-          Tip: Make sure you view Summary on the <span className="font-medium">same domain</span> as
-          here (localStorage is origin-scoped).
-        </p>
-      )}
     </div>
   );
 }
