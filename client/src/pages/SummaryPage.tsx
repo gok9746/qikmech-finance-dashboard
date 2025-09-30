@@ -59,6 +59,7 @@ export default function SummaryPage() {
   }
 
   React.useEffect(() => {
+    // initial load
     reloadFromStorage();
 
     // cross-tab/native updates
@@ -69,7 +70,7 @@ export default function SummaryPage() {
     };
     window.addEventListener("storage", storageHandler);
 
-    // same-tab updates (fix here 👇)
+    // same-tab updates (fix)
     const sameTabHandler = () => reloadFromStorage();
     window.addEventListener("qm:data-updated", sameTabHandler);
 
