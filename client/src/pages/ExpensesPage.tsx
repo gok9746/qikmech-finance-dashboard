@@ -1,122 +1,152 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { supabase } from "@/lib/supabaseClient";
+import { Plus, Search } from "lucide-react";
+import ExpenseForm, { Expense } from "@/components/expenses/ExpenseForm";
 
-type Expense = {
-  id: string;
-  date: string;
-  category: string;
-  amount_eur: number;
-  note?: string | null;
-};
+type Role = "admin" | "staff" | "accountant";
 
-export default function ExpensesPage() {
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [category, setCategory] = useState("");
-  const [amount, setAmount] = useState("");
-  const [note, setNote] = useState("");
+interface ExpensesPageProps {
+  userRole: Role;
+}
 
-  // 🔹 Load Expenses from Supabase
-  async function loadExpenses() {
-    const { data, error } = await supabase
-      .from("expenses")
-      .select("*")
-      .order("date", { ascending: false });
+const STORAGE_KEY = "qm_expenses_v1";
 
-    if (error) {
-      console.error("❌ Error loading expenses:", error);
-    } else {
-      setExpenses(data as Expense[]);
+export default function ExpensesPage({ userRole }: ExpensesPageProps) {
+  const [expenses, setExpenses] = React.useState<Expense[]>([]);
+  const [q, setQ] = React.useState("");
+  const [open, setOpen] = React.useState(false);
+
+  // Load from storage on mount
+  React.useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) setExpenses(parsed);
+      }
+    } catch (err) {
+      console.error("❌ Failed to load expenses from localStorage", err);
     }
-  }
-
-  useEffect(() => {
-    loadExpenses();
   }, []);
 
-  // 🔹 Add new expense to Supabase
-  async function addExpense() {
-    if (!category.trim() || !amount) {
-      return alert("Please fill category and amount");
-    }
+  function saveExpenses(next: Expense[]) {
+    console.log("💾 Writing to localStorage:", STORAGE_KEY, next);
+    setExpenses(next);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
 
-    const user = (await supabase.auth.getUser()).data.user;
-
-    const { data, error } = await supabase
-      .from("expenses")
-      .insert([
-        {
-          date,
-          category: category.trim(),
-          amount_eur: Number(amount),
-          note: note.trim() || null,
-          user_id: user?.id, // link to logged-in user
-        },
-      ])
-      .select();
-
-    if (error) {
-      console.error("❌ Error saving expense:", error);
-      alert("Failed to save expense");
-    } else {
-      setExpenses([...(data as Expense[]), ...expenses]);
-      setCategory("");
-      setAmount("");
-      setNote("");
-    }
+    // Fire SAME-TAB event
+    window.dispatchEvent(
+      new CustomEvent("qm:data-updated", { detail: { table: "expenses" } })
+    );
   }
 
+  function addExpense(payload: {
+    date: string;
+    category: string;
+    amount_eur: number | string;
+    notes?: string;
+  }) {
+    console.log("🟢 addExpense called with payload:", payload);
+
+    const e: Expense = {
+      id: crypto.randomUUID(),
+      date: payload.date,
+      category: payload.category.trim(),
+      amount_eur: Number(payload.amount_eur || 0), // ✅ force number
+      note: payload.notes?.trim() ? payload.notes.trim() : null,
+    };
+
+    console.log("💾 New expense object:", e);
+
+    const updated = [e, ...expenses];
+    saveExpenses(updated);
+    setOpen(false);
+  }
+
+  const filtered = React.useMemo(() => {
+    if (!q.trim()) return expenses;
+    const s = q.toLowerCase();
+    return expenses.filter((e) =>
+      [e.date, e.category, String(e.amount_eur), e.note ?? ""].some((v) =>
+        String(v).toLowerCase().includes(s)
+      )
+    );
+  }, [q, expenses]);
+
   return (
-    <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Expenses</h1>
+    <div className="p-4 md:p-6 space-y-6">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold tracking-tight">Expenses</h1>
 
-      {/* Expense Form */}
-      <div className="grid gap-2 max-w-md">
-        <Label>Date</Label>
-        <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 opacity-60" />
+            <Input
+              className="pl-8 w-64"
+              placeholder="Search expenses..."
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </div>
 
-        <Label>Category</Label>
-        <Input
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          placeholder="Fuel / Rent / Ads / Tools"
-        />
-
-        <Label>Amount (€)</Label>
-        <Input
-          type="number"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder="0.00"
-        />
-
-        <Label>Note</Label>
-        <Input
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="Optional note"
-        />
-
-        <Button onClick={addExpense}>Save Expense</Button>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Expense
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Add Expense</DialogTitle>
+              </DialogHeader>
+              <ExpenseForm
+                onSubmit={addExpense}
+                onCancel={() => setOpen(false)}
+              />
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
-      {/* Expense List */}
-      <div className="space-y-2">
-        {expenses.length === 0 ? (
-          <p className="text-muted-foreground">No expenses yet.</p>
+      <div className="rounded-2xl border p-4">
+        {filtered.length === 0 ? (
+          <p className="text-sm opacity-70">No expenses yet.</p>
         ) : (
-          expenses.map((e) => (
-            <div key={e.id} className="border rounded-lg p-3 flex justify-between">
-              <div>
-                <strong>{e.category}</strong> — {e.date}
-                <div className="text-sm opacity-70">{e.note || "-"}</div>
+          <div className="space-y-3">
+            {filtered.map((e) => (
+              <div
+                key={e.id}
+                className="grid grid-cols-2 md:grid-cols-4 gap-2 items-center p-3 rounded-xl border"
+              >
+                <div>
+                  <Label className="opacity-60 text-xs">Date</Label>
+                  <div>{e.date}</div>
+                </div>
+                <div>
+                  <Label className="opacity-60 text-xs">Category</Label>
+                  <div>{e.category}</div>
+                </div>
+                <div>
+                  <Label className="opacity-60 text-xs">Amount (€)</Label>
+                  <div>€ {Number(e.amount_eur).toFixed(2)}</div>
+                </div>
+                <div className="col-span-2 md:col-span-1">
+                  <Label className="opacity-60 text-xs">Note</Label>
+                  <div className="truncate">{e.note ?? "-"}</div>
+                </div>
               </div>
-              <div>€ {e.amount_eur.toFixed(2)}</div>
-            </div>
-          ))
+            ))}
+          </div>
         )}
       </div>
     </div>
