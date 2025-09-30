@@ -44,8 +44,7 @@ export default function SummaryPage({ userRole }: SummaryPageProps) {
   const [jobs, setJobs] = React.useState<Job[]>([]);
   const [expenses, setExpenses] = React.useState<Expense[]>([]);
 
-  // Load jobs + expenses from localStorage
-  React.useEffect(() => {
+  function reloadFromStorage() {
     try {
       const r1 = localStorage.getItem(JOBS_KEY);
       if (r1) {
@@ -61,27 +60,28 @@ export default function SummaryPage({ userRole }: SummaryPageProps) {
         if (Array.isArray(e)) setExpenses(e);
       }
     } catch {}
+  }
 
-    // 👇 listen for changes in localStorage (expenses or jobs)
-    const handler = () => {
-      try {
-        const r1 = localStorage.getItem(JOBS_KEY);
-        if (r1) {
-          const j = JSON.parse(r1) as Job[];
-          if (Array.isArray(j)) setJobs(j);
-        }
-      } catch {}
-      try {
-        const r2 = localStorage.getItem(EXP_KEY);
-        if (r2) {
-          const e = JSON.parse(r2) as Expense[];
-          if (Array.isArray(e)) setExpenses(e);
-        }
-      } catch {}
+  // Load jobs + expenses from localStorage
+  React.useEffect(() => {
+    reloadFromStorage();
+
+    // listen for changes in localStorage
+    const storageHandler = (ev: StorageEvent) => {
+      if (ev.key === JOBS_KEY || ev.key === EXP_KEY || ev.key === null) {
+        reloadFromStorage();
+      }
     };
+    window.addEventListener("storage", storageHandler);
 
-    window.addEventListener("storage", handler);
-    return () => window.removeEventListener("storage", handler);
+    // listen for same-tab updates (from ExpensesPage dispatch)
+    const sameTabHandler = () => reloadFromStorage();
+    window.addEventListener("qm:data-updated", sameTabHandler);
+
+    return () => {
+      window.removeEventListener("storage", storageHandler);
+      window.removeEventListener("qm:data-updated", sameTabHandler);
+    };
   }, []);
 
   // KPIs
