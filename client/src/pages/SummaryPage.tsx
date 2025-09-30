@@ -1,119 +1,121 @@
-import React from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import SummaryCard from '@/components/dashboard/SummaryCard';
+import FinancialCharts from '@/components/charts/FinancialCharts';
+import { BarChart3, TrendingUp, TrendingDown, DollarSign, Receipt, PiggyBank, Calculator } from 'lucide-react';
 
-type Expense = {
-  id: string;
-  date: string;
-  category: string;
-  amount_eur: number;
-  note?: string | null;
+// TODO: remove mock functionality - replace with real calculations
+const mockFinancialData = {
+  worksCompleted: 127,
+  incomeWithTax: 45620.50,
+  incomeWithoutTax: 12340.75,
+  totalPartsCost: 18450.25,
+  otherExpenses: 8920.30,
+  totalExpenses: 27370.55,
+  profitBeforeTax: 30590.70,
+  vatCollected: 10492.71,
+  netProfit: 20097.99
 };
 
-type Job = {
-  id: string;
-  // Include both common variants so we don't break if your job object uses either key
-  parts_cost_eur?: number;
-  partsCost?: number;
-  // Add whatever else you store for jobs...
-};
+interface SummaryPageProps {
+  userRole: 'admin' | 'staff' | 'accountant';
+}
 
-const JOBS_KEY = "qm_jobs_v1";
-const EXP_KEY = "qm_expenses_v1";
-
-export default function SummaryPage() {
-  const [jobs, setJobs] = React.useState<Job[]>([]);
-  const [expenses, setExpenses] = React.useState<Expense[]>([]);
-
-  const partsCostFromJobs = React.useMemo(() => {
-    return jobs.reduce((sum, j) => {
-      const v =
-        typeof j.parts_cost_eur === "number"
-          ? j.parts_cost_eur
-          : typeof j.partsCost === "number"
-          ? j.partsCost
-          : 0;
-      return sum + v;
-    }, 0);
-  }, [jobs]);
-
-  const manualOtherExpenses = React.useMemo(() => {
-    return expenses.reduce((sum, e) => sum + (Number(e.amount_eur) || 0), 0);
-  }, [expenses]);
-
-  const totalExpenses = partsCostFromJobs + manualOtherExpenses;
-
-  function reloadFromStorage() {
-    try {
-      const r1 = localStorage.getItem(JOBS_KEY);
-      if (r1) {
-        const j = JSON.parse(r1);
-        if (Array.isArray(j)) setJobs(j);
-      }
-    } catch {
-      // ignore
-    }
-
-    try {
-      const r2 = localStorage.getItem(EXP_KEY);
-      if (r2) {
-        const e = JSON.parse(r2);
-        if (Array.isArray(e)) setExpenses(e);
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  React.useEffect(() => {
-    // initial load
-    reloadFromStorage();
-
-    // cross-tab/native updates
-    const storageHandler = (ev: StorageEvent) => {
-      if (ev.key === JOBS_KEY || ev.key === EXP_KEY || ev.key === null) {
-        reloadFromStorage();
-      }
-    };
-    window.addEventListener("storage", storageHandler);
-
-    // same-tab updates from pages/components (reliable)
-    const sameTabHandler = () => reloadFromStorage();
-    window.addEventListener("qm:data-updated", sameTabHandler as EventListener);
-
-    return () => {
-      window.removeEventListener("storage", storageHandler);
-      window.removeEventListener("qm:data-updated", sameTabHandler as EventListener);
-    };
-  }, []);
-
+export default function SummaryPage({ userRole }: SummaryPageProps) {
+  const data = mockFinancialData;
+  
   return (
-    <div className="p-4 md:p-6 space-y-6">
-      <h1 className="text-2xl font-semibold tracking-tight">Summary</h1>
-
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card className="rounded-2xl">
-          <CardHeader>
-            <CardTitle className="text-base">Parts Cost from Jobs</CardTitle>
-          </CardHeader>
-          <CardContent className="text-2xl font-bold">€ {partsCostFromJobs.toFixed(2)}</CardContent>
-        </Card>
-
-        <Card className="rounded-2xl">
-          <CardHeader>
-            <CardTitle className="text-base">Other Expenses (Manual)</CardTitle>
-          </CardHeader>
-          <CardContent className="text-2xl font-bold">€ {manualOtherExpenses.toFixed(2)}</CardContent>
-        </Card>
-
-        <Card className="rounded-2xl">
-          <CardHeader>
-            <CardTitle className="text-base">Total Expenses</CardTitle>
-          </CardHeader>
-          <CardContent className="text-2xl font-bold">€ {totalExpenses.toFixed(2)}</CardContent>
-        </Card>
+    <div className="p-6 space-y-6" data-testid="page-summary">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-foreground">Financial Summary</h1>
+          <p className="text-muted-foreground">Overview of business performance and metrics</p>
+        </div>
       </div>
 
-      {/* Keep/add your revenue, profit, charts, etc. below as needed */}
+      {/* Key Metrics Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <SummaryCard
+          title="Works Completed"
+          value={data.worksCompleted}
+          icon={BarChart3}
+          description="Total jobs finished"
+          trend={{ value: 12, label: 'from last month' }}
+        />
+        
+        <SummaryCard
+          title="Total Income"
+          value={data.incomeWithTax + data.incomeWithoutTax}
+          icon={TrendingUp}
+          description="Revenue with & without tax"
+          trend={{ value: 8.5, label: 'from last month' }}
+        />
+        
+        <SummaryCard
+          title="Total Expenses"
+          value={data.totalExpenses}
+          icon={TrendingDown}
+          description="Parts + operational costs"
+          trend={{ value: -2.1, label: 'from last month' }}
+        />
+        
+        <SummaryCard
+          title="Net Profit"
+          value={data.netProfit}
+          icon={PiggyBank}
+          description="After VAT deduction"
+          trend={{ value: 15.3, label: 'from last month' }}
+        />
+      </div>
+
+      {/* Detailed Financial Breakdown */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <SummaryCard
+          title="Income (With Tax)"
+          value={data.incomeWithTax}
+          icon={DollarSign}
+          description="Jobs with 23% VAT applied"
+        />
+        
+        <SummaryCard
+          title="Income (Without Tax)"
+          value={data.incomeWithoutTax}
+          icon={DollarSign}
+          description="Jobs without VAT"
+        />
+        
+        <SummaryCard
+          title="Parts Cost"
+          value={data.totalPartsCost}
+          icon={Receipt}
+          description="Total parts expenses"
+        />
+        
+        <SummaryCard
+          title="Other Expenses"
+          value={data.otherExpenses}
+          icon={Receipt}
+          description="Fuel, tools, insurance, etc."
+        />
+        
+        <SummaryCard
+          title="Profit Before Tax"
+          value={data.profitBeforeTax}
+          icon={Calculator}
+          description="Total income - total expenses"
+        />
+        
+        <SummaryCard
+          title="VAT Collected"
+          value={data.vatCollected}
+          icon={Calculator}
+          description="23% VAT on applicable jobs"
+        />
+      </div>
+
+      {/* Financial Charts */}
+      <div className="mt-8">
+        <h2 className="text-2xl font-bold mb-4">Financial Analytics</h2>
+        <FinancialCharts />
+      </div>
     </div>
   );
 }
