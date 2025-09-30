@@ -61,7 +61,7 @@ export default function SummaryPage() {
   React.useEffect(() => {
     reloadFromStorage();
 
-    // handle cross-tab storage changes
+    // cross-tab/native updates
     const storageHandler = (ev: StorageEvent) => {
       if (ev.key === JOBS_KEY || ev.key === EXP_KEY || ev.key === null) {
         reloadFromStorage();
@@ -69,8 +69,8 @@ export default function SummaryPage() {
     };
     window.addEventListener("storage", storageHandler);
 
-    // handle same-tab custom event
-    const sameTabHandler = (_ev: Event) => reloadFromStorage();
+    // same-tab updates (fix here 👇)
+    const sameTabHandler = () => reloadFromStorage();
     window.addEventListener("qm:data-updated", sameTabHandler);
 
     return () => {
