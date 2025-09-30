@@ -95,27 +95,21 @@ export default function SummaryPage() {
           <CardHeader>
             <CardTitle className="text-base">Parts Cost from Jobs</CardTitle>
           </CardHeader>
-          <CardContent className="text-2xl font-bold">
-            € {partsCostFromJobs.toFixed(2)}
-          </CardContent>
+          <CardContent className="text-2xl font-bold">€ {partsCostFromJobs.toFixed(2)}</CardContent>
         </Card>
 
         <Card className="rounded-2xl">
           <CardHeader>
             <CardTitle className="text-base">Other Expenses (Manual)</CardTitle>
           </CardHeader>
-          <CardContent className="text-2xl font-bold">
-            € {manualOtherExpenses.toFixed(2)}
-          </CardContent>
+          <CardContent className="text-2xl font-bold">€ {manualOtherExpenses.toFixed(2)}</CardContent>
         </Card>
 
         <Card className="rounded-2xl">
           <CardHeader>
             <CardTitle className="text-base">Total Expenses</CardTitle>
           </CardHeader>
-          <CardContent className="text-2xl font-bold">
-            € {totalExpenses.toFixed(2)}
-          </CardContent>
+          <CardContent className="text-2xl font-bold">€ {totalExpenses.toFixed(2)}</CardContent>
         </Card>
       </div>
 
