@@ -23,8 +23,9 @@ export default function JobsPage() {
   const [amount, setAmount] = useState("");
   const [partsCost, setPartsCost] = useState("");
   const [status, setStatus] = useState("Pending");
+  const [taxApplied, setTaxApplied] = useState(true); // ✅ VAT checkbox state
 
-  // 🔹 Load Jobs
+  // Load jobs from Supabase
   async function loadJobs() {
     const { data, error } = await supabase
       .from("jobs")
@@ -38,7 +39,7 @@ export default function JobsPage() {
     loadJobs();
   }, []);
 
-  // 🔹 Add Job
+  // Add Job to Supabase
   async function addJob() {
     if (!customer.trim() || !serviceType.trim() || !amount) {
       return alert("Please fill customer, service and amount.");
@@ -52,7 +53,7 @@ export default function JobsPage() {
         amount_eur: Number(amount),
         parts_cost_eur: Number(partsCost) || 0,
         status,
-        tax_applied: true,
+        tax_applied: taxApplied, // ✅ saves checkbox value
         user_id: (await supabase.auth.getUser()).data.user?.id,
       },
     ]).select();
@@ -67,6 +68,7 @@ export default function JobsPage() {
       setAmount("");
       setPartsCost("");
       setStatus("Pending");
+      setTaxApplied(true); // reset to default
     }
   }
 
@@ -98,6 +100,16 @@ export default function JobsPage() {
           <option>Completed</option>
         </select>
 
+        {/* ✅ VAT Option */}
+        <Label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={taxApplied}
+            onChange={(e) => setTaxApplied(e.target.checked)}
+          />
+          Apply VAT (23%)
+        </Label>
+
         <Button onClick={addJob}>Save Job</Button>
       </div>
 
@@ -115,6 +127,7 @@ export default function JobsPage() {
               <div>
                 <div>€ {j.amount_eur.toFixed(2)}</div>
                 <div className="text-xs opacity-60">Parts: € {j.parts_cost_eur.toFixed(2)}</div>
+                <div className="text-xs opacity-60">VAT: {j.tax_applied ? "Yes" : "No"}</div>
               </div>
             </div>
           ))
