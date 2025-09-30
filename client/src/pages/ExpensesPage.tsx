@@ -1,16 +1,10 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Plus, Search } from "lucide-react";
 import ExpenseForm, { Expense } from "@/components/expenses/ExpenseForm";
+import { supabase } from "@/lib/supabaseClient";
 
 type Role = "admin" | "staff" | "accountant";
 
@@ -18,58 +12,60 @@ interface ExpensesPageProps {
   userRole: Role;
 }
 
-const STORAGE_KEY = "qm_expenses_v1";
-
 export default function ExpensesPage({ userRole }: ExpensesPageProps) {
-  const [expenses, setExpenses] = React.useState<Expense[]>([]);
-  const [q, setQ] = React.useState("");
-  const [open, setOpen] = React.useState(false);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
 
-  // Load from storage on mount
-  React.useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) setExpenses(parsed);
-      }
-    } catch (err) {
-      console.error("❌ Failed to load expenses from localStorage", err);
-    }
+  // ✅ Load expenses from Supabase on mount
+  useEffect(() => {
+    loadExpenses();
   }, []);
 
-  function saveExpenses(next: Expense[]) {
-    console.log("💾 Writing to localStorage:", STORAGE_KEY, next);
-    setExpenses(next);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  async function loadExpenses() {
+    const { data, error } = await supabase
+      .from("expenses")
+      .select("*")
+      .order("date", { ascending: false });
 
-    // Fire SAME-TAB event
-    window.dispatchEvent(
-      new CustomEvent("qm:data-updated", { detail: { table: "expenses" } })
-    );
+    if (error) {
+      console.error("Error loading expenses:", error.message);
+      return;
+    }
+    setExpenses(data as Expense[]);
   }
 
-  function addExpense(payload: {
+  // ✅ Save expense to Supabase
+  async function addExpense(payload: {
     date: string;
     category: string;
-    amount_eur: number | string;
+    amount_eur: number;
     notes?: string;
   }) {
-    console.log("🟢 addExpense called with payload:", payload);
+    const user = (await supabase.auth.getUser()).data.user;
+    if (!user) {
+      alert("You must be logged in to add expenses");
+      return;
+    }
 
-    const e: Expense = {
-      id: crypto.randomUUID(),
+    const newExpense = {
       date: payload.date,
       category: payload.category.trim(),
-      amount_eur: Number(payload.amount_eur || 0), // ✅ force number
-      note: payload.notes?.trim() ? payload.notes.trim() : null,
+      amount_eur: Number(payload.amount_eur),
+      note: payload.notes?.trim() || null,
+      user_id: user.id, // ✅ link to logged-in user
     };
 
-    console.log("💾 New expense object:", e);
+    const { error } = await supabase.from("expenses").insert([newExpense]);
 
-    const updated = [e, ...expenses];
-    saveExpenses(updated);
+    if (error) {
+      console.error("Insert error:", error.message);
+      alert("Failed to save expense: " + error.message);
+      return;
+    }
+
     setOpen(false);
+    await loadExpenses(); // refresh list
   }
 
   const filtered = React.useMemo(() => {
@@ -98,26 +94,24 @@ export default function ExpensesPage({ userRole }: ExpensesPageProps) {
             />
           </div>
 
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Expense
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Add Expense</DialogTitle>
-              </DialogHeader>
-              <ExpenseForm
-                onSubmit={addExpense}
-                onCancel={() => setOpen(false)}
-              />
-            </DialogContent>
-          </Dialog>
+          <Button onClick={() => setOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Expense
+          </Button>
         </div>
       </div>
 
+      {/* Expense Form Dialog */}
+      {open && (
+        <div className="border p-4 rounded-lg">
+          <ExpenseForm
+            onSubmit={addExpense}
+            onCancel={() => setOpen(false)}
+          />
+        </div>
+      )}
+
+      {/* Expense list */}
       <div className="rounded-2xl border p-4">
         {filtered.length === 0 ? (
           <p className="text-sm opacity-70">No expenses yet.</p>
