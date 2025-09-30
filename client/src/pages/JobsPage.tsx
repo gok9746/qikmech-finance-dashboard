@@ -1,275 +1,125 @@
 import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
-import JobCard from "@/components/jobs/JobCard";
-import { Search, Filter, Plus } from "lucide-react";
+import { supabase } from "@/lib/supabaseClient";
 
-type JobStatus = "Pending" | "In Progress" | "Completed";
-
-interface Job {
+type Job = {
   id: string;
-  date: string; // YYYY-MM-DD
+  date: string;
   customer: string;
   service_type: string;
   amount_eur: number;
   parts_cost_eur: number;
-  status: JobStatus;
+  status: string;
   tax_applied: boolean;
-}
+};
 
-interface JobsPageProps {
-  userRole: "admin" | "staff" | "accountant";
-}
-
-const STORAGE_KEY = "qm_jobs_v1";
-const VAT_RATE = 0.23;
-
-export default function JobsPage({ userRole }: JobsPageProps) {
+export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [customer, setCustomer] = useState("");
+  const [serviceType, setServiceType] = useState("");
+  const [amount, setAmount] = useState("");
+  const [partsCost, setPartsCost] = useState("");
+  const [status, setStatus] = useState("Pending");
 
-  // Add Job dialog state + fields
-  const [open, setOpen] = useState(false);
-  const [newCustomer, setNewCustomer] = useState("");
-  const [newService, setNewService] = useState("");
-  const [newDate, setNewDate] = useState(new Date().toISOString().slice(0, 10));
-  const [newAmount, setNewAmount] = useState<number | "">("");
-  const [newParts, setNewParts] = useState<number | "">("");
-  const [newTax, setNewTax] = useState(false);
+  // 🔹 Load Jobs
+  async function loadJobs() {
+    const { data, error } = await supabase
+      .from("jobs")
+      .select("*")
+      .order("date", { ascending: false });
+    if (error) console.error("Load jobs error:", error);
+    else setJobs(data as Job[]);
+  }
 
-  // Load from localStorage on mount
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Job[];
-        if (Array.isArray(parsed)) setJobs(parsed);
-      }
-    } catch (_) {
-      // ignore parse errors
-    }
+    loadJobs();
   }, []);
 
-  // Persist on every change
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
-  }, [jobs]);
+  // 🔹 Add Job
+  async function addJob() {
+    if (!customer.trim() || !serviceType.trim() || !amount) {
+      return alert("Please fill customer, service and amount.");
+    }
 
-  const resetForm = () => {
-    setNewCustomer("");
-    setNewService("");
-    setNewDate(new Date().toISOString().slice(0, 10));
-    setNewAmount("");
-    setNewParts("");
-    setNewTax(false);
-  };
+    const { data, error } = await supabase.from("jobs").insert([
+      {
+        date,
+        customer: customer.trim(),
+        service_type: serviceType.trim(),
+        amount_eur: Number(amount),
+        parts_cost_eur: Number(partsCost) || 0,
+        status,
+        tax_applied: true,
+        user_id: (await supabase.auth.getUser()).data.user?.id,
+      },
+    ]).select();
 
-  const createJobLocal = () => {
-    if (!newCustomer.trim() || !newService.trim() || !newDate) return;
-
-    const job: Job = {
-      id: crypto.randomUUID(),
-      customer: newCustomer.trim(),
-      service_type: newService.trim(),
-      date: newDate,
-      amount_eur: Number(newAmount || 0),
-      parts_cost_eur: Number(newParts || 0),
-      status: "Pending",
-      tax_applied: !!newTax,
-    };
-
-    setJobs((prev) => [job, ...prev]);
-    resetForm();
-    setOpen(false);
-
-    // 🔄 Later: replace with Supabase insert and keep setJobs for optimistic UI.
-    // const { error } = await supabase.from("jobs").insert([job]);
-    // if (!error) setJobs((prev) => [job, ...prev]);
-  };
-
-  const handleStatusChange = (jobId: string, newStatus: JobStatus) => {
-    setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, status: newStatus } : j)));
-  };
-
-  const filteredJobs = jobs.filter((job) => {
-    const q = searchTerm.toLowerCase();
-    const matchesSearch =
-      job.customer.toLowerCase().includes(q) ||
-      job.service_type.toLowerCase().includes(q);
-    const matchesStatus = statusFilter === "all" || job.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+    if (error) {
+      console.error("Insert job error:", error);
+      alert("Failed to save job");
+    } else {
+      setJobs([...(data as Job[]), ...jobs]);
+      setCustomer("");
+      setServiceType("");
+      setAmount("");
+      setPartsCost("");
+      setStatus("Pending");
+    }
+  }
 
   return (
-    <div className="p-6 space-y-6" data-testid="page-jobs">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Jobs</h1>
-          <p className="text-muted-foreground">Manage customer service requests</p>
-        </div>
+    <div className="p-6 space-y-6">
+      <h1 className="text-2xl font-bold">Jobs</h1>
 
-        {(userRole === "admin" || userRole === "staff") && (
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button type="button" data-testid="button-add-job">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Job
-              </Button>
-            </DialogTrigger>
+      {/* Job Form */}
+      <div className="grid gap-2 max-w-md">
+        <Label>Date</Label>
+        <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
 
-            <DialogContent className="sm:max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Add Job</DialogTitle>
-              </DialogHeader>
+        <Label>Customer</Label>
+        <Input value={customer} onChange={(e) => setCustomer(e.target.value)} placeholder="Customer name" />
 
-              <div className="grid gap-4">
-                <div className="grid gap-2">
-                  <Label>Customer</Label>
-                  <Input
-                    placeholder="ACME Ltd"
-                    value={newCustomer}
-                    onChange={(e) => setNewCustomer(e.target.value)}
-                  />
-                </div>
+        <Label>Service Type</Label>
+        <Input value={serviceType} onChange={(e) => setServiceType(e.target.value)} placeholder="Service type" />
 
-                <div className="grid gap-2">
-                  <Label>Service</Label>
-                  <Input
-                    placeholder="Engine Diagnostics"
-                    value={newService}
-                    onChange={(e) => setNewService(e.target.value)}
-                  />
-                </div>
+        <Label>Amount (€)</Label>
+        <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
 
-                <div className="grid gap-2">
-                  <Label>Date</Label>
-                  <Input
-                    type="date"
-                    value={newDate}
-                    onChange={(e) => setNewDate(e.target.value)}
-                  />
-                </div>
+        <Label>Parts Cost (€)</Label>
+        <Input type="number" value={partsCost} onChange={(e) => setPartsCost(e.target.value)} placeholder="0.00" />
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-2">
-                    <Label>Amount (EUR, net)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={newAmount}
-                      onChange={(e) =>
-                        setNewAmount(e.target.value === "" ? "" : +e.target.value)
-                      }
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Parts Cost (EUR)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={newParts}
-                      onChange={(e) =>
-                        setNewParts(e.target.value === "" ? "" : +e.target.value)
-                      }
-                    />
-                  </div>
-                </div>
+        <Label>Status</Label>
+        <select value={status} onChange={(e) => setStatus(e.target.value)} className="border rounded p-2">
+          <option>Pending</option>
+          <option>In Progress</option>
+          <option>Completed</option>
+        </select>
 
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="tax"
-                    checked={newTax}
-                    onCheckedChange={(v) => setNewTax(Boolean(v))}
-                  />
-                  <Label htmlFor="tax">Apply 23% VAT</Label>
-                </div>
+        <Button onClick={addJob}>Save Job</Button>
+      </div>
 
-                <div className="flex justify-end gap-2 pt-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => {
-                      resetForm();
-                      setOpen(false);
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="button" onClick={createJobLocal}>
-                    Save
-                  </Button>
-                </div>
+      {/* Job List */}
+      <div className="space-y-2">
+        {jobs.length === 0 ? (
+          <p>No jobs yet.</p>
+        ) : (
+          jobs.map((j) => (
+            <div key={j.id} className="border rounded-lg p-3 flex justify-between">
+              <div>
+                <strong>{j.customer}</strong> — {j.service_type} <br />
+                <span className="text-sm opacity-70">{j.status}</span>
               </div>
-            </DialogContent>
-          </Dialog>
+              <div>
+                <div>€ {j.amount_eur.toFixed(2)}</div>
+                <div className="text-xs opacity-60">Parts: € {j.parts_cost_eur.toFixed(2)}</div>
+              </div>
+            </div>
+          ))
         )}
       </div>
-
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search jobs..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-            data-testid="input-search-jobs"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <Filter className="h-4 w-4 text-muted-foreground" />
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-40" data-testid="select-status-filter">
-              <SelectValue placeholder="All Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="Pending">Pending</SelectItem>
-              <SelectItem value="In Progress">In Progress</SelectItem>
-              <SelectItem value="Completed">Completed</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {/* Grid */}
-      {filteredJobs.length === 0 ? (
-        <div className="rounded-xl border border-dashed p-10 text-center text-muted-foreground">
-          No jobs yet. Click <span className="font-medium">Add Job</span> to create your first one.
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filteredJobs.map((job) => (
-            <JobCard
-              key={job.id}
-              job={job}
-              userRole={userRole}
-              onStatusChange={handleStatusChange}
-              onEdit={() => {}}
-            />
-          ))}
-        </div>
-      )}
     </div>
   );
 }
