@@ -11,8 +11,10 @@ type Expense = {
 
 type Job = {
   id: string;
+  // Include both common variants so we don't break if your job object uses either key
   parts_cost_eur?: number;
   partsCost?: number;
+  // Add whatever else you store for jobs...
 };
 
 const JOBS_KEY = "qm_jobs_v1";
@@ -47,7 +49,9 @@ export default function SummaryPage() {
         const j = JSON.parse(r1);
         if (Array.isArray(j)) setJobs(j);
       }
-    } catch {}
+    } catch {
+      // ignore
+    }
 
     try {
       const r2 = localStorage.getItem(EXP_KEY);
@@ -55,7 +59,9 @@ export default function SummaryPage() {
         const e = JSON.parse(r2);
         if (Array.isArray(e)) setExpenses(e);
       }
-    } catch {}
+    } catch {
+      // ignore
+    }
   }
 
   React.useEffect(() => {
@@ -70,13 +76,13 @@ export default function SummaryPage() {
     };
     window.addEventListener("storage", storageHandler);
 
-    // same-tab updates (fix)
+    // same-tab updates from pages/components (reliable)
     const sameTabHandler = () => reloadFromStorage();
-    window.addEventListener("qm:data-updated", sameTabHandler);
+    window.addEventListener("qm:data-updated", sameTabHandler as EventListener);
 
     return () => {
       window.removeEventListener("storage", storageHandler);
-      window.removeEventListener("qm:data-updated", sameTabHandler);
+      window.removeEventListener("qm:data-updated", sameTabHandler as EventListener);
     };
   }, []);
 
@@ -112,6 +118,8 @@ export default function SummaryPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Keep/add your revenue, profit, charts, etc. below as needed */}
     </div>
   );
 }
