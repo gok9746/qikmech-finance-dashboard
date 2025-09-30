@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import SummaryCard from "@/components/dashboard/SummaryCard";
 import { supabase } from "@/lib/supabaseClient";
-import { BarChart3, TrendingUp, TrendingDown, PiggyBank, Calculator, DollarSign, Receipt } from "lucide-react";
+import { BarChart3, TrendingUp, TrendingDown, PiggyBank, Calculator, Receipt } from "lucide-react";
 
 type Job = {
   id: string;
@@ -14,7 +14,11 @@ type Job = {
 
 type Expense = {
   id: string;
+  user_id: string;
+  date: string;
+  category: string;
   amount_eur: number;
+  note?: string | null;
 };
 
 const VAT_RATE = 0.23;
@@ -24,8 +28,16 @@ export default function SummaryPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
 
   async function loadData() {
-    const { data: jobsData } = await supabase.from("jobs").select("*");
-    const { data: expensesData } = await supabase.from("expenses").select("*");
+    const { data: jobsData, error: jobsError } = await supabase.from("jobs").select("*");
+    if (jobsError) console.error("Jobs fetch error:", jobsError);
+
+    const { data: expensesData, error: expensesError } = await supabase
+      .from("expenses")
+      .select("*")
+      .order("date", { ascending: false });
+
+    if (expensesError) console.error("Expenses fetch error:", expensesError);
+
     setJobs((jobsData as Job[]) || []);
     setExpenses((expensesData as Expense[]) || []);
   }
