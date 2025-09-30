@@ -1,57 +1,39 @@
 import React, { useEffect, useState } from "react";
 import SummaryCard from "@/components/dashboard/SummaryCard";
+import { supabase } from "@/lib/supabaseClient";
 import { BarChart3, TrendingUp, TrendingDown, PiggyBank, Calculator, DollarSign, Receipt } from "lucide-react";
 
 type Job = {
   id: string;
   date: string;
-  customer: string;
-  service_type: string;
   amount_eur: number;
   parts_cost_eur: number;
-  status: "Pending" | "In Progress" | "Completed";
+  status: string;
   tax_applied: boolean;
 };
 
 type Expense = {
   id: string;
-  date: string;
-  category: string;
   amount_eur: number;
-  note?: string | null;
 };
 
-const JOBS_KEY = "qm_jobs_v1";
-const EXP_KEY = "qm_expenses_v1";
 const VAT_RATE = 0.23;
 
 export default function SummaryPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
 
-  function reload() {
-    try {
-      const r1 = localStorage.getItem(JOBS_KEY);
-      if (r1) setJobs(JSON.parse(r1));
-    } catch {}
-    try {
-      const r2 = localStorage.getItem(EXP_KEY);
-      if (r2) setExpenses(JSON.parse(r2));
-    } catch {}
+  async function loadData() {
+    const { data: jobsData } = await supabase.from("jobs").select("*");
+    const { data: expensesData } = await supabase.from("expenses").select("*");
+    setJobs((jobsData as Job[]) || []);
+    setExpenses((expensesData as Expense[]) || []);
   }
 
   useEffect(() => {
-    reload();
-    const handler = () => reload();
-    window.addEventListener("storage", handler);
-    window.addEventListener("qm:data-updated", handler);
-    return () => {
-      window.removeEventListener("storage", handler);
-      window.removeEventListener("qm:data-updated", handler);
-    };
+    loadData();
   }, []);
 
-  // Totals
   const totalIncomeNet = jobs.reduce((s, j) => s + j.amount_eur, 0);
   const partsCost = jobs.reduce((s, j) => s + j.parts_cost_eur, 0);
   const otherExpenses = expenses.reduce((s, e) => s + Number(e.amount_eur || 0), 0);
