@@ -11,10 +11,8 @@ type Expense = {
 
 type Job = {
   id: string;
-  // Include both common variants so we don't break if your job object uses either key
   parts_cost_eur?: number;
   partsCost?: number;
-  // Add whatever else you store for jobs...
 };
 
 const JOBS_KEY = "qm_jobs_v1";
@@ -49,9 +47,7 @@ export default function SummaryPage() {
         const j = JSON.parse(r1);
         if (Array.isArray(j)) setJobs(j);
       }
-    } catch {
-      // ignore
-    }
+    } catch {}
 
     try {
       const r2 = localStorage.getItem(EXP_KEY);
@@ -59,16 +55,13 @@ export default function SummaryPage() {
         const e = JSON.parse(r2);
         if (Array.isArray(e)) setExpenses(e);
       }
-    } catch {
-      // ignore
-    }
+    } catch {}
   }
 
   React.useEffect(() => {
-    // initial load
     reloadFromStorage();
 
-    // cross-tab/native updates
+    // handle cross-tab storage changes
     const storageHandler = (ev: StorageEvent) => {
       if (ev.key === JOBS_KEY || ev.key === EXP_KEY || ev.key === null) {
         reloadFromStorage();
@@ -76,13 +69,13 @@ export default function SummaryPage() {
     };
     window.addEventListener("storage", storageHandler);
 
-    // same-tab updates from pages/components (reliable)
-    const sameTabHandler = () => reloadFromStorage();
-    window.addEventListener("qm:data-updated", sameTabHandler as EventListener);
+    // handle same-tab custom event
+    const sameTabHandler = (_ev: Event) => reloadFromStorage();
+    window.addEventListener("qm:data-updated", sameTabHandler);
 
     return () => {
       window.removeEventListener("storage", storageHandler);
-      window.removeEventListener("qm:data-updated", sameTabHandler as EventListener);
+      window.removeEventListener("qm:data-updated", sameTabHandler);
     };
   }, []);
 
@@ -95,25 +88,29 @@ export default function SummaryPage() {
           <CardHeader>
             <CardTitle className="text-base">Parts Cost from Jobs</CardTitle>
           </CardHeader>
-          <CardContent className="text-2xl font-bold">€ {partsCostFromJobs.toFixed(2)}</CardContent>
+          <CardContent className="text-2xl font-bold">
+            € {partsCostFromJobs.toFixed(2)}
+          </CardContent>
         </Card>
 
         <Card className="rounded-2xl">
           <CardHeader>
             <CardTitle className="text-base">Other Expenses (Manual)</CardTitle>
           </CardHeader>
-          <CardContent className="text-2xl font-bold">€ {manualOtherExpenses.toFixed(2)}</CardContent>
+          <CardContent className="text-2xl font-bold">
+            € {manualOtherExpenses.toFixed(2)}
+          </CardContent>
         </Card>
 
         <Card className="rounded-2xl">
           <CardHeader>
             <CardTitle className="text-base">Total Expenses</CardTitle>
           </CardHeader>
-          <CardContent className="text-2xl font-bold">€ {totalExpenses.toFixed(2)}</CardContent>
+          <CardContent className="text-2xl font-bold">
+            € {totalExpenses.toFixed(2)}
+          </CardContent>
         </Card>
       </div>
-
-      {/* Keep/add your revenue, profit, charts, etc. below as needed */}
     </div>
   );
 }
