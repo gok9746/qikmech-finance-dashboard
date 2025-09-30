@@ -1,4 +1,3 @@
-// client/src/components/auth/LoginForm.tsx
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,7 +28,7 @@ export default function LoginForm({ onLogin }: Props) {
 
     try {
       setLoading(true);
-      await onLogin(eNorm, password); // App.tsx will do Supabase auth + allowlist check
+      await onLogin(eNorm, password);
     } catch (err: any) {
       setError(err?.message ?? "Sign-in failed. Please try again.");
     } finally {
@@ -37,7 +36,6 @@ export default function LoginForm({ onLogin }: Props) {
     }
   };
 
-  // optional quick-fill helpers for your three accounts
   const fill = (em: string) => setEmail(em);
 
   return (
@@ -45,9 +43,7 @@ export default function LoginForm({ onLogin }: Props) {
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-center">QikMech Finance</CardTitle>
-          <CardDescription className="text-center">
-            Sign in with your allowed account.
-          </CardDescription>
+          <CardDescription className="text-center">Sign in with your allowed account.</CardDescription>
         </CardHeader>
 
         <CardContent>
@@ -109,17 +105,17 @@ export default function LoginForm({ onLogin }: Props) {
               {loading ? "Signing in…" : "Sign in"}
             </Button>
 
-            {/* quick-fill (optional) — remove if you don't want them visible */}
+            {/* quick-fill shortcuts (optional; remove if you prefer) */}
             <div className="text-xs text-muted-foreground space-y-1 pt-2">
               <div className="flex flex-wrap gap-2 items-center">
                 <span>Quick fill:</span>
-                <Button type="button" variant="secondary" size="sm" onClick={() => fill("pominpoppip@gmail.com")}>
+                <Button type="button" variant="secondary" size="sm" onClick={() => fill("pominpoppi@gmail.com")}>
                   admin
                 </Button>
                 <Button type="button" variant="secondary" size="sm" onClick={() => fill("sooryamohan0001@gmail.com")}>
                   accountant
                 </Button>
-                <Button type="button" variant="secondary" size="sm" onClick={() => fill("gokulsaj2016@gmail.com")}>
+                <Button type="button" variant="secondary" size="sm" onClick={() => fill("gokulsaji2016@gmail.com")}>
                   staff
                 </Button>
               </div>
