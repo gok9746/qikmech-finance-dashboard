@@ -2,145 +2,146 @@ import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Search } from "lucide-react";
-import ExpenseForm, { Expense } from "@/components/expenses/ExpenseForm";
 import { supabase } from "@/lib/supabaseClient";
 
-type Role = "admin" | "staff" | "accountant";
+type Expense = {
+  id: string;
+  date: string;       // YYYY-MM-DD
+  category: string;
+  amount_eur: number;
+  note?: string | null;
+  user_id?: string;   // returned by Supabase
+};
 
-interface ExpensesPageProps {
-  userRole: Role;
-}
-
-export default function ExpensesPage({ userRole }: ExpensesPageProps) {
+export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [q, setQ] = useState("");
-  const [open, setOpen] = useState(false);
+  const [date, setDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [category, setCategory] = useState<string>("");
+  const [amount, setAmount] = useState<string>("");
+  const [note, setNote] = useState<string>("");
+  const [loading, setLoading] = useState(false);
 
-  // ✅ Load expenses from Supabase on mount
+  // ✅ Load from Supabase on mount
   useEffect(() => {
     loadExpenses();
   }, []);
 
   async function loadExpenses() {
+    setLoading(true);
     const { data, error } = await supabase
       .from("expenses")
       .select("*")
       .order("date", { ascending: false });
 
     if (error) {
-      console.error("Error loading expenses:", error.message);
-      return;
+      console.error("❌ Load expenses error:", error);
+      alert("Failed to load expenses: " + error.message);
+    } else {
+      setExpenses((data ?? []) as Expense[]);
     }
-    setExpenses(data as Expense[]);
+    setLoading(false);
   }
 
-  // ✅ Save expense to Supabase
-  async function addExpense(payload: {
-    date: string;
-    category: string;
-    amount_eur: number;
-    notes?: string;
-  }) {
-    const user = (await supabase.auth.getUser()).data.user;
+  // ✅ Insert into Supabase with explicit user_id
+  async function addExpense() {
+    const trimmedCategory = category.trim();
+    const amt = Number(amount);
+
+    if (!trimmedCategory) return alert("Please enter a category.");
+    if (!amount || Number.isNaN(amt) || amt < 0) return alert("Please enter a valid amount.");
+    if (!date) return alert("Please choose a date.");
+
+    const { data: userResp, error: userErr } = await supabase.auth.getUser();
+    if (userErr) {
+      console.error("❌ getUser error:", userErr);
+      return alert("Auth error: " + userErr.message);
+    }
+    const user = userResp.user;
     if (!user) {
-      alert("You must be logged in to add expenses");
-      return;
+      return alert("You must be logged in to add expenses.");
     }
 
-    const newExpense = {
-      date: payload.date,
-      category: payload.category.trim(),
-      amount_eur: Number(payload.amount_eur),
-      note: payload.notes?.trim() || null,
-      user_id: user.id, // ✅ link to logged-in user
+    const payload = {
+      user_id: user.id,                // 🔑 required for RLS
+      date,                            // YYYY-MM-DD
+      category: trimmedCategory,
+      amount_eur: amt,                 // numeric in DB
+      note: note.trim() || null,
     };
 
-    const { error } = await supabase.from("expenses").insert([newExpense]);
+    setLoading(true);
+    const { data, error } = await supabase.from("expenses").insert([payload]).select("*");
+    setLoading(false);
 
     if (error) {
-      console.error("Insert error:", error.message);
-      alert("Failed to save expense: " + error.message);
-      return;
+      console.error("❌ Insert expense error:", error);
+      return alert("Failed to save expense: " + error.message);
     }
 
-    setOpen(false);
-    await loadExpenses(); // refresh list
+    // Refresh list from DB to be certain
+    await loadExpenses();
+
+    // Reset form
+    setCategory("");
+    setAmount("");
+    setNote("");
   }
 
-  const filtered = React.useMemo(() => {
-    if (!q.trim()) return expenses;
-    const s = q.toLowerCase();
-    return expenses.filter((e) =>
-      [e.date, e.category, String(e.amount_eur), e.note ?? ""].some((v) =>
-        String(v).toLowerCase().includes(s)
-      )
-    );
-  }, [q, expenses]);
-
   return (
-    <div className="p-4 md:p-6 space-y-6">
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">Expenses</h1>
+    <div className="p-6 space-y-6">
+      <h1 className="text-2xl font-bold">Expenses</h1>
+      <p className="text-sm text-muted-foreground">Track and manage business expenses</p>
 
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 opacity-60" />
-            <Input
-              className="pl-8 w-64"
-              placeholder="Search expenses..."
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-          </div>
+      {/* Form */}
+      <div className="grid gap-2 max-w-md">
+        <Label>Date</Label>
+        <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
 
-          <Button onClick={() => setOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Expense
-          </Button>
-        </div>
+        <Label>Category</Label>
+        <Input
+          placeholder="Fuel / Tools / Rent / Ads"
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+        />
+
+        <Label>Amount (€)</Label>
+        <Input
+          type="number"
+          inputMode="decimal"
+          step="0.01"
+          placeholder="0.00"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+        />
+
+        <Label>Note (optional)</Label>
+        <Input
+          placeholder="Short note"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+
+        <Button onClick={addExpense} disabled={loading}>
+          {loading ? "Saving..." : "Save Expense"}
+        </Button>
       </div>
 
-      {/* Expense Form Dialog */}
-      {open && (
-        <div className="border p-4 rounded-lg">
-          <ExpenseForm
-            onSubmit={addExpense}
-            onCancel={() => setOpen(false)}
-          />
-        </div>
-      )}
-
-      {/* Expense list */}
-      <div className="rounded-2xl border p-4">
-        {filtered.length === 0 ? (
-          <p className="text-sm opacity-70">No expenses yet.</p>
+      {/* List */}
+      <div className="space-y-2">
+        {loading && expenses.length === 0 ? (
+          <p>Loading…</p>
+        ) : expenses.length === 0 ? (
+          <p className="text-muted-foreground">No expenses yet.</p>
         ) : (
-          <div className="space-y-3">
-            {filtered.map((e) => (
-              <div
-                key={e.id}
-                className="grid grid-cols-2 md:grid-cols-4 gap-2 items-center p-3 rounded-xl border"
-              >
-                <div>
-                  <Label className="opacity-60 text-xs">Date</Label>
-                  <div>{e.date}</div>
-                </div>
-                <div>
-                  <Label className="opacity-60 text-xs">Category</Label>
-                  <div>{e.category}</div>
-                </div>
-                <div>
-                  <Label className="opacity-60 text-xs">Amount (€)</Label>
-                  <div>€ {Number(e.amount_eur).toFixed(2)}</div>
-                </div>
-                <div className="col-span-2 md:col-span-1">
-                  <Label className="opacity-60 text-xs">Note</Label>
-                  <div className="truncate">{e.note ?? "-"}</div>
-                </div>
+          expenses.map((e) => (
+            <div key={e.id} className="border rounded-lg p-3 flex justify-between">
+              <div>
+                <strong>{e.category}</strong> — {e.date}
+                <div className="text-sm opacity-70">{e.note || "-"}</div>
               </div>
-            ))}
-          </div>
+              <div>€ {Number(e.amount_eur).toFixed(2)}</div>
+            </div>
+          ))
         )}
       </div>
     </div>
