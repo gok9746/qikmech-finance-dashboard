@@ -38,7 +38,7 @@ export default function ExpenseForm({ defaultValues, onSubmit, onCancel }: Expen
     onSubmit({
       date,
       category: category.trim(),
-      amount_eur: amt,
+      amount_eur: amt, // ✅ always number
       notes: notes?.toString() ?? "",
     });
   }
