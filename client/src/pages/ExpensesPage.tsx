@@ -68,7 +68,14 @@ export default function ExpensesPage({ userRole }: ExpensesPageProps) {
       amount_eur: Number(amount || 0),
       note: note.trim() ? note.trim() : null,
     };
-    setExpenses((prev) => [e, ...prev]);
+
+    const updated = [e, ...expenses];
+    setExpenses(updated);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+
+    // ✅ Manually trigger a storage event so SummaryPage updates in same tab
+    window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEY }));
+
     reset();
     setOpen(false);
 
@@ -116,7 +123,11 @@ export default function ExpensesPage({ userRole }: ExpensesPageProps) {
               <div className="grid gap-4">
                 <div className="grid gap-2">
                   <Label>Date</Label>
-                  <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+                  <Input
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                  />
                 </div>
 
                 <div className="grid gap-2">
@@ -135,7 +146,9 @@ export default function ExpensesPage({ userRole }: ExpensesPageProps) {
                     min="0"
                     step="0.01"
                     value={amount}
-                    onChange={(e) => setAmount(e.target.value === "" ? "" : +e.target.value)}
+                    onChange={(e) =>
+                      setAmount(e.target.value === "" ? "" : +e.target.value)
+                    }
                   />
                 </div>
 
@@ -186,7 +199,9 @@ export default function ExpensesPage({ userRole }: ExpensesPageProps) {
 
       {filtered.length === 0 ? (
         <div className="rounded-xl border border-dashed p-10 text-center text-muted-foreground">
-          No expenses yet. Click <span className="font-medium">Add Expense</span> to create your first one.
+          No expenses yet. Click{" "}
+          <span className="font-medium">Add Expense</span> to create your first
+          one.
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border">
@@ -202,7 +217,9 @@ export default function ExpensesPage({ userRole }: ExpensesPageProps) {
             <tbody>
               {filtered.map((e) => (
                 <tr key={e.id} className="border-t">
-                  <td className="p-3">{new Date(e.date).toLocaleDateString()}</td>
+                  <td className="p-3">
+                    {new Date(e.date).toLocaleDateString()}
+                  </td>
                   <td className="p-3">{e.category}</td>
                   <td className="p-3 text-right">{currency(e.amount_eur)}</td>
                   <td className="p-3">{e.note}</td>
